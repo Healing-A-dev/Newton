@@ -3,9 +3,9 @@
 display := {}
 
 Integer -> &proc(int):
-	if .int int:
-		.puts "Invalid integer value: " << int
+	if not [.int $int]:
+		.puts "Invalid integer value: " << $int
 	else:
-		.puts "Integer: " << int
+		.puts "Integer: " << $int
 	end
 end
