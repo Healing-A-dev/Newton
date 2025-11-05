@@ -1,3 +1,11 @@
-using lib::std
+# Example array of functions
 
-puts("Hello, World!\n")
+display := {}
+
+Integer -> &proc(int):
+	if .int int:
+		.puts "Invalid integer value: " << int
+	else:
+		.puts "Integer: " << int
+	end
+end
