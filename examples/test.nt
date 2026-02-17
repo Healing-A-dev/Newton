@@ -1,0 +1,32 @@
+using std::IO
+using std::File
+using std::System
+using std::Math
+using std::Collection
+
+fn main:
+    ; Index 0 = Program Name (./my_cat)
+    ; Index 1 = First Argument
+    set filename: System.argv 1
+
+    if $filename == 0:
+        IO.println "Error: Please provide a filename."
+        IO.println "Usage: ./my_cat [filename]"
+        return
+    end
+
+    IO.print "Reading file: "
+    IO.println $filename
+
+    ; Open Read-Only (0)
+    set fd: (File.open $filename, 0)
+
+    ; Read up to 1024 bytes
+    set content: (File.read $fd, 1024)
+
+    IO.println "--- Content ---"
+    IO.print $content
+    IO.println "\n---------------"
+
+    File.close $fd
+end

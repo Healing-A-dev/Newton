@@ -1,0 +1,33 @@
+; --- STRING LIBRARY ---
+
+fn split:
+	@args string_val
+	set characters: []
+	set length_of_string: len $string_val
+	while (len $characters) < $length_of_string:
+		set sub_value: substring $string_val, (len $characters), 1
+		characters{(len $characters)}: $sub_value
+	end
+	return $characters
+end
+
+
+fn reverse:
+	@args string_val
+	set characters: []
+	set reversing_string: ""
+	set length_of_string: len $string_val
+	set _length_of_string: $length_of_string
+
+	
+	while (len $characters) < $length_of_string:
+		set sub_value: substring $string_val, (len $characters), 1
+		characters{(len $characters)}: $sub_value
+	end	
+
+	while $length_of_string > 0:
+		reversing_string: $reversing_string << string $characters{$length_of_string - 1}
+		length_of_string: $length_of_string - 1
+	end
+	return $reversing_string
+end

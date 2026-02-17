@@ -1,0 +1,105 @@
+; Newton is a function language with dynamic typing
+; It follows a command style function calling syntax
+;   - Function calls require no parenthesis
+;   - Arguments are separeted by commas
+;
+; Parenthesis are only needed for 3 reasons:
+;   - Arithmetic order of operations
+;   - Creating arrays/dictionaries
+;   - Nested function calling
+;       ie. func1 func1_arg1, (func2 func2_arg1, func2_arg2), func1_arg2
+
+
+
+; Single Line Comment
+/= Multi Line Comment =/
+
+
+; Importing files/libraries
+using std::IO
+using layer1::layer2::layer3::FILE
+
+
+; Variable declaration:
+set x: 10
+
+; Global Varibles Declaration:
+set y*: 20
+
+
+
+; Arrays/List/Dictionaries:
+; They all share similar syntax (for simplicity)
+set array: ("Bob", "Bill", "Jane")
+set dictionary: (name1: "Robert", name2: "Joseph", name3: "Jill")
+
+
+; Calling values from arrays
+stdout $array{0}
+
+; Calling values from dictionaries
+stdout $dictionary{"name1"}
+stdout $dictionary->name2
+
+; Adding a function to a dictionary
+fn dictionary->displayNames:
+	@args self, separator
+	foreach  &blank, &name, $self:
+		stdout $name, $separator
+	end
+end
+
+
+; Calling a function within an array
+dictionary->display ", "
+
+
+
+; If/elif/else statements:
+if $x > 15:
+    stdout $x
+elif $y >= 15:
+    stdout $y
+else:
+    stdout "X nor y is greater than 15"
+end
+
+
+; Functions
+fn test_multiply:
+    ; Macro to expand function arguments
+    ; Function argmuents are similar to perl ($ARGF{0}, $ARGF{1}, etc)
+    ; The args macro expands $ARGF into the given argument names and makes them usable within the function
+    @args x, y, z
+
+    ; Example return statement
+    return x * y * z
+end
+
+fn greet:
+    stdout "Hello, There!"
+end
+
+
+; For statements follow the following syntax:
+; Argument 1: Iterator variable name (can be anything)
+; Argument 2: Iterator variable starting value
+; Argument 3: Ending value
+; Argument 4: Amount to increment by
+for &iter, 0, 15, 1:
+    stdout "Current iteration is: ", $iter
+end
+
+
+; While statement
+while $x < $y:
+    stdout $x
+
+    ; Unimplemented currently, but this is what variable updating may possibly look like
+    x: $x + 1
+end
+
+
+; Function calls
+greet
+test_multiply $x, $y, 15

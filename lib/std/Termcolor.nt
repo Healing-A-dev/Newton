@@ -1,0 +1,43 @@
+; std/Termcolor.nt
+
+; --- Base ---
+set RESET*: "\x1b[0m"
+set BOLD*:  "\x1b[1m"
+
+; --- Foreground ---
+set BLACK*:   "\x1b[30m"
+set RED*:     "\x1b[31m"
+set GREEN*:   "\x1b[32m"
+set YELLOW*:  "\x1b[33m"
+set BLUE*:    "\x1b[34m"
+set MAGENTA*: "\x1b[35m"
+set CYAN*:    "\x1b[36m"
+set WHITE*:   "\x1b[37m"
+
+; --- Background ---
+set BG_RED*:    "\x1b[41m"
+set BG_GREEN*:  "\x1b[42m"
+set BG_YELLOW*: "\x1b[43m"
+set BG_BLUE*:   "\x1b[44m"
+
+; --- Helper Functions ---
+
+fn text:
+    @args color_code, text
+    return $color_code << $text << $Termcolor.RESET
+end
+
+fn error:
+    @args msg
+    return $Termcolor.RED << "[ERROR] " << $Termcolor.RESET << $msg
+end
+
+fn success:
+    @args msg
+    return $Termcolor.GREEN << "[SUCCESS] " << $Termcolor.RESET << $msg
+end
+
+fn warning:
+    @args msg
+    return $Termcolor.YELLOW << "[WARNING] " << $Termcolor.RESET << $msg
+end

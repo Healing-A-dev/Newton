@@ -1,0 +1,26 @@
+; std/Process.nt
+
+fn fork:
+    @args _null  ; [FIX] Dummy argument
+    return proc_fork $_null
+end
+
+fn id:
+    @args _null  ; [FIX] Dummy argument
+    return proc_pid $_null
+end
+
+fn wait:
+    @args _null  ; [FIX] Dummy argument
+    return proc_wait $_null
+end
+
+fn sleep:
+    @args sec
+    proc_sleep $sec
+end
+
+fn exit:
+    @args code
+    proc_exit $code
+end

@@ -1,0 +1,37 @@
+set socket*: 0
+
+
+fn new:
+    @args _null
+    return net_create $_null
+end
+
+fn bind:
+    @args net, port
+    return net_bind $net, $port
+end
+
+fn listen:
+    @args net
+    return net_listen $net
+end
+
+fn send:
+    @args client, msg
+    return net_send $client, $msg
+end
+
+fn accept:
+    @args port
+    return net_accept $port
+end
+
+fn close:
+    @args client
+    net_close $client
+end
+
+fn recieve:
+    @args client, size
+    return net_recv $client, $size
+end

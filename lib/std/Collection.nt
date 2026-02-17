@@ -1,0 +1,98 @@
+; Map/List Standarad Library
+
+; Returns the length of the given map/list/
+fn sizeof:
+    @args map
+    return len $map
+end
+
+fn remove:
+    @args map, key
+    del $map{$key}
+end
+
+fn has_key:
+    @args map, key
+    set val: $map{$key}
+    if $val == 0:
+        return 0
+    else:
+        return 1
+    end
+end
+
+fn push:
+    @args map_val, value
+	set map_type: typeof $map_val
+	
+    if $map_type == "map":
+    	set map_len: len $map_val
+    	map_val{$map_len}: $value
+    	return $map_val
+    	
+    elseif $map_type == "list":
+    	set map_len: len $map_val
+    	map_val{$map_len}: $value
+    	return $map_val
+    end
+end
+
+
+fn pop:
+	@args map_list
+
+	; --- MAPS ---
+	if (typeof $map_list) == "map":
+
+		; Since maps are iterated backwords (when using foreach)
+		; Just loop once and pop whatever the first value is
+		foreach &_null, &item, $map_list:
+			del $map_list{$_null}
+			return $item
+		end
+	end
+
+	; --- LISTS ---
+	if (typeof $map_list) == "list":
+		set last_item: $map_list{(len $map_list) - 1}
+		return $last_item
+	end
+
+	return 0
+end
+
+
+fn join:
+	@args map_list, sep
+	set out_string: ""
+	set length: len $map_list
+
+	; --- MAPS ---
+	if (typeof $map_list) == "map":
+		set counter: 0
+		foreach &_, &item, $map_list:
+			out_string: $out_string << $item
+			if $counter < $length:
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return $out_string
+	end
+
+	; --- LISTS ---
+	if (typeof $map_list) == "list":
+		set counter: 0
+		while $counter < $length:
+			out_string: $out_string << $map_list{$counter}
+			if $counter < $length:
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return $out_string
+	end
+
+	return 0
+end
+		

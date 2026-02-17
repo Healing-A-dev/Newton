@@ -1,0 +1,48 @@
+; std/ENV.nt
+
+fn argv:
+    @args index
+    return sys_argv($index)
+end
+
+
+; Polymorphic execute function
+; Accepts list, maps, and or strings as arguemnts
+; List/Maps are automatically processed and joined together to create the final command
+fn exec:
+	@args cmd
+
+	set commands: ""
+	set cmd_type: typeof $cmd
+	
+	if $cmd_type == "map":
+
+		; Reversing map order
+		set sub_commands: ()
+		foreach &_null, &command, $cmd:
+			sub_commands{(len $sub_commands)}: $command
+		end
+
+		foreach &_null, &command, $sub_commands:
+			commands: $commands << $command << " "
+		end
+	elseif $cmd_type == "list":
+		set cmd_len: len $cmd
+		set s: 0
+		while $s < $cmd_len:
+			commands: $commands << $cmd{$s} << " "
+			s: $s + 1
+		end
+	else:
+		commands: $commands << $cmd
+	end
+
+    prints "[\x1b[93mCmd\x1b[0m] " << $commands << "\n"
+	sys_exec $commands
+end
+
+
+fn exit:
+    @args errno
+    proc_exit $errno
+end

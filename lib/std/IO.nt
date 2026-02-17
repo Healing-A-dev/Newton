@@ -1,0 +1,89 @@
+
+
+fn println:
+    @args val
+
+	; MAPS
+    if (typeof $val) == "map":
+    	set count: 1
+    	prints "("
+    	foreach &map_key, &map_value, $val:
+            prints $map_key, ": "
+            prints $map_value
+            if $count < (len $val):
+    	        prints ", "
+    	        count: $count + 1
+            end
+    	end
+    	prints ")\n"
+    	return
+	elseif (typeof $val) == "list":
+		set length: len $val
+		prints "["
+		for &count, 0, $length, 1:
+			prints $val{$count}
+			if $count < ($length - 1):
+                prints ", "
+    		end
+    	end
+    	prints "]\n"
+    	return
+    end
+
+    ; DEFAULT
+    prints $val, "\n"
+end
+
+fn print:
+    @args val
+
+	; MAPS
+    if (typeof $val) == "map":
+    	set count: 1
+    	prints "("
+    	foreach &map_key, &map_value, $val:
+            prints $map_key, ": "
+            prints $map_value
+            if $count < (len $val):
+                prints ", "
+                count: $count + 1
+            end
+    	end
+    	prints ")"
+    	return
+    end
+
+	; LIST
+	if (typeof $val) == "list":
+		prints "["
+		for &count, 0, (len $val), 1:
+			prints $val{$count}
+			if $count < (len $val):
+    			prints ", "
+    		end
+    	end
+    	prints "]"
+    	return
+    end
+
+    ; DEFAULT
+    prints $val
+end
+
+fn readln:
+    ; Call compile read
+    return input
+end
+
+
+fn prompt:
+	@args msg
+	prints $msg
+	return input
+end
+
+fn err:
+    @args msg, errno
+    sys_err "\x1b[91m" << $msg << "\x1b[0m"
+    proc_exit $errno
+end

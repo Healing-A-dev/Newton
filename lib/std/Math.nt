@@ -1,0 +1,108 @@
+; MATH module for the standarrd library
+
+; ------------------------------------- ;
+;         MATHEMATICAL CONSTANTS        ;
+; ------------------------------------- ;
+
+set pi*: 3.1415926353
+
+; ------------------------------------- ;
+;         MATHEMATICAL FUNCTIONS        ;
+; ------------------------------------- ;
+
+; Absolute Value
+fn abs:
+    @args n
+    if $n < 0:
+        return 0 - $n
+    end
+    return $n
+end
+
+
+; Minimum
+fn min:
+    @args a, b
+    if $a < $b:
+        return $a
+    else:
+        return $b
+    end
+end
+
+
+; Maximum
+fn max:
+    @args a, b
+    if $a > $b:
+        return $a
+    else:
+        return $b
+    end
+end
+
+
+; Naive exponent (will be optimized later)
+fn pow:
+    @args base, exp
+
+    set result: 1
+    set i: 0
+
+    while $i < $exp:
+        result: $result * $base
+        i: $i + 1
+    end
+
+    return $result
+end
+
+
+; Modulo
+fn mod:
+    @args a, b
+    set r: $a - $b
+    while $r >= $b:
+        r: $r - $b
+    end
+    return $r
+end
+
+
+; Round
+fn round:
+	@args n
+
+	if $n >= 0.0:
+		set res: int ($n + 0.5)
+		return float $res
+	else:
+		set res: int ($n - 0.5)
+		return float $res
+	end
+end
+
+
+; Square Fault
+fn sqrt:
+    @args n
+    
+    ; 1. Ensure input is float using your new intrinsic
+    set s: float $n
+    
+    if $s <= 0.0: return 0.0 end
+    
+    ; 2. Initial Guess
+    set x: $s / 2.0
+    set iter: 0
+    
+    ; 3. Iterate for precision (10 steps is plenty for ASCII)
+    while $iter < 10:
+        set div: $s / $x
+        set sum: $x + $div
+        x: $sum * 0.5
+        iter: $iter + 1
+    end
+    
+    return $x
+end

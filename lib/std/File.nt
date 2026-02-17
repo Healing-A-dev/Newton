@@ -1,0 +1,31 @@
+; std/FILE.nt
+
+set fmWrite*: 577
+set fmRead*: 0
+
+
+fn open:
+    @args path, flags
+    return sys_open $path, $flags
+end
+
+fn write:
+    @args fd, data
+    sys_write $fd, $data
+end
+
+; Read the given length of the file
+fn read:
+    @args fd, len
+    sys_read $fd, $len
+end
+
+fn readEntireFile:
+    @args fd
+    read_file $fd
+end
+
+fn close:
+    @args fd
+    sys_close $fd
+end
