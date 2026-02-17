@@ -1,0 +1,21 @@
+using std::IO
+
+fn main:
+    set i: 0
+    IO.println "Starting Memory Stress Test..."
+
+    while $i < 50000:
+        ; --- FIX ---
+        ; Concatenate two strings. This forces 'malloc' to run.
+        ; We don't need the integer in the string to prove GC works.
+        set temp: "Stress Test Allocation " << " - Placeholder"
+        ; -----------
+
+        ; Free the memory. If GC is broken, this loop will eventually crash or leak.
+        sys_free $temp
+
+        i: $i + 1
+    end
+
+    IO.println "Success! 50,000 allocations handled without crashing."
+end

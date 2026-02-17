@@ -1,0 +1,51 @@
+using lib::std::IO
+using lib::std::Math
+
+fn main:
+    IO.println "--- Newton's Circle (Calculated via Newton's Method) ---"
+
+    set radius: 8.0
+    set y: -10
+    
+    ; Loop Y from -10 to 10
+    while $y <= 10:
+        set row: ""
+        
+        ; Loop X from -16 to 16 (Wider to account for terminal aspect ratio)
+        set x: -16
+        while $x <= 16:
+            
+            ; Convert coordinates to float for math
+            set fx: float $x
+            set fy: float $y
+            
+            ; Calculate Distance: d = sqrt(x^2 + y^2)
+            set dist: Math.sqrt (($fx * $fx) + ($fy * $fy))
+            
+            ; Calculate difference from radius
+            set diff: $dist - $radius
+            
+            ; Absolute value
+            if $diff < 0.0: 
+                diff: 0.0 - $diff 
+            end
+            
+            ; Render Logic
+            if $diff < 0.6:
+                ; The Ring
+                row: $row << "#"
+            elseif $dist < $radius:
+                ; Inside
+                row: $row << "."
+            else:
+                ; Outside
+                row: $row << " "
+            end
+            
+            x: $x + 1
+        end
+        
+        IO.println $row
+        y: $y + 1
+    end
+end
