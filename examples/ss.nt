@@ -1,0 +1,131 @@
+using std::IO
+using std::Collection
+
+; --- STRING LIBRARY ---
+
+fn split:
+	@args string_val
+	set characters: []
+	set length_of_string: len $string_val
+	while (len $characters) < $length_of_string:
+		set sub_value: substring $string_val, (len $characters), 1
+		characters{(len $characters)}: sub_value
+	end
+	return characters
+end
+
+
+fn reverse:
+	@args string_val
+	set characters: []
+	set reversing_string: ""
+	set length_of_string: len $string_val
+	set _length_of_string: $length_of_string
+
+	
+	while (len $characters) < $length_of_string:
+		set sub_value: substring $string_val, (len $characters), 1
+		characters{(len $characters)}: sub_value
+	end	
+
+	while $length_of_string > 0:
+		reversing_string: $reversing_string << str ($characters{$length_of_string - 1})
+		length_of_string: $length_of_string - 1
+	end
+	return reversing_string
+end
+	
+
+	
+; --- MAP LIBRARY EXTENSION ---
+
+fn join:
+	@args map_list, sep
+	set out_string: ""
+	set length: len $map_list
+
+	; --- MAPS ---
+	if (typeof $map_list) == "map":
+		set counter: 0
+		foreach &_, &item, $map_list:
+			out_string: $out_string << $item
+			if $counter < $length:
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return out_string
+	end
+
+	; --- LISTS ---
+	if (typeof $map_list) == "list":
+		set counter: 0
+		while $counter < $length:
+			out_string: $out_string << $map_list{$counter}
+			if $counter < $length:
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return out_string
+	end
+
+	return 0
+end
+
+
+fn pop:
+	@args map_list
+
+	; --- MAPS ---
+	if (typeof $map_list) == "map":
+
+		; Since maps are iterated backwords (when using foreach)
+		; Just loop once and pop whatever the first value is
+		foreach &_null, &item, $map_list:
+			Collection.remove $map_list, &_null
+			return $item
+		end
+	end	
+
+	if (typeof $map_list) == "list":
+		set last_item: $map_list{(len $map_list) - 1}
+		return last_item
+	end
+
+	return 0
+end
+	
+	
+; --- TESTING ---
+
+	
+fn main:
+	set string: "Hello"
+	set colors: ("p", "a", "b", "ksj")
+	set char_array: split $string
+
+	IO.println "Initial string: " << $string 
+
+	IO.print "Split string: "
+	IO.println $char_array
+
+	set concatenated_char_array: join $char_array, ""
+	IO.println "Concatenated character array: " << $concatenated_char_array
+
+	set reverse_string: reverse $concatenated_char_array
+	IO.println "Reverse string: " << $reverse_string
+
+
+	set poop: pop
+	
+	IO.print "Original colors: "
+	IO.println $colors
+	
+	set popped_valed: call $poop($colors)
+	IO.println "Popped value from colors: '" << $popped_valed << "'"
+
+	IO.print "New colors: "
+	IO.println $colors
+end
+
