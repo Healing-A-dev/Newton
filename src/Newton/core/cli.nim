@@ -1,0 +1,207 @@
+import os, strutils
+
+const VERSION*: string = "0.3.0 [BETA]"
+
+type STATES* = tuple [
+    State: string,
+    Input: string,
+    Output: string,
+    Backend: string,
+    Fallback: string,
+    Intermidiates: string,
+    LinkerFiles: seq[string],
+    ObjectOutput: string,
+    Verbose: string,
+    TargetOS: string,
+    isScript: bool,
+    noStdlib: bool,
+]
+
+const helpMessage: string = """
+Newton Programming Language
+-------------------------------
+usage: newton <command> [<args>] [<flags>]
+
+commands:
+   init <name>    > Initialize a new Newton project skeleton
+   build <file>   > Compile a Newton file or project
+   run* <file>    > Compile and run immediately
+   help           > Display this message
+   version        > Display the installed build version
+
+options:
+   -o | --output   > Specify the output binary name
+   -b | --build    > Specify the compiler backend (native, c, webasm)
+   -f | --fallback > Specify a backend to fallback to in case of compilation errors.
+   -p | --platform > Specify the target platform (win64, linux, darwin)
+   -v | --verbose  > Enable verbose compiler output
+
+advanced flags:
+   --keep-intermidiates > Keep all generated intermediate files
+   --debug              > Generate debug information instead of compiling
+   --link-C             > Link with C
+   --script             > Treat the given file as a newton script file (.nts)
+   --noStdlib           > Prevents the standard library from being automatically imported.
+   -L                   > Specify a file to link with
+   -O                   > Compile to an object file
+   -GVM                 > Compile to GravityVM bytecode
+"""
+
+# --- Scaffolding Engine ---
+proc initProject(name: string) =
+  let dir = if name == "": "newton_project" else: name
+  createDir(dir)
+  createDir(dir / "src")
+  createDir(dir / "lib")
+  createDir(dir / "bin")
+
+  # Generate standard library entry point
+  let mainCode = "fun main:\n    IO.Std_Println \"Hello World!\"\nend\n"
+  writeFile(dir / "src" / "Main.nt", mainCode)
+
+  # Generate .gitignore
+  let gitignore = "Packages/\nbin/\n*.o\n"
+  writeFile(dir / ".gitignore", gitignore)
+
+  # Generate project configuration as NPF (Non-Newtonian Format)
+  let npfConfig = """
+[Project]
+name = "$#"
+version = "0.1.0"
+entrypoint = "src/Main.nt"
+
+[Packages]
+""" % [dir]
+
+  writeFile(dir / ".Newtonproj.toml", npfConfig)
+
+  echo "\e[1;32mCreated\e[0m project directory `", dir, "`"
+  quit(0)
+
+# --- Argument Parsing ---
+proc parseArgs*(ARGS: seq[string]): STATES =
+  var counter: int = 0
+  var linkedC: bool = false
+
+  var DATA: STATES
+  DATA.TargetOS = hostOS
+  DATA.State = "build"
+  DATA.isScript = false
+  DATA.noStdlib = false
+
+  if ARGS.len == 0:
+    echo helpMessage
+    quit(1)
+
+  let cmd = ARGS[0]
+
+  if cmd == "init":
+     let pName = if ARGS.len > 1: ARGS[1] else: "newton_project"
+     initProject(pName)
+  elif cmd == "run":
+     DATA.State = "run"
+     if ARGS.len > 1 and not ARGS[1].startsWith("-"): DATA.Input = ARGS[1]
+     counter = 2
+  elif cmd == "build":
+     DATA.State = "build"
+     if ARGS.len > 1 and not ARGS[1].startsWith("-"): DATA.Input = ARGS[1]
+     counter = 2
+  elif cmd == "help":
+    echo helpMessage
+    quit(0)
+  elif cmd == "version":
+    echo "newton " & VERSION
+    quit(0)
+  else:
+     # Fallback to old behavior for backwards compatibility
+     if not cmd.startsWith("-"): DATA.Input = cmd
+     counter = 1
+
+  while counter < ARGS.len:
+    let arg = ARGS[counter]
+    case arg
+    of "-o", "--output":
+      DATA.Output = ARGS[counter + 1];
+      counter.inc
+    of "-b", "--build":
+      DATA.Backend = "-b:" & ARGS[counter + 1]
+      counter.inc
+    of "-f", "--fallback":
+      DATA.Fallback = "-f:" & ARGS[counter + 1]
+      counter.inc
+    of "--keep-intermidiates":
+      DATA.Intermidiates = "-intermidiates:true"
+    of "--debug":
+      DATA.State = "disassemble"
+    of "-p", "--platform":
+      DATA.TargetOS = "-P:" & ARGS[counter + 1]
+      counter.inc
+    of "-v", "--verbose":
+      DATA.Verbose = "-verbose:true"
+    of "-L":
+      case ARGS[counter + 1][^2..^1]
+      of ".o", ".a":
+        DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+        counter.inc
+      else:
+        if ARGS[counter + 1][^5..^2] == ".so.":
+          DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+          counter.inc
+        else:
+          if linkedC == false:
+            DATA.LinkerFiles.add("-L:-lc")
+            DATA.LinkerFiles.add("-L:-lm")
+            DATA.LinkerFiles.add("-L:--dynamic-linker")
+            DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+            linkedC = true
+          DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
+          counter.inc
+    of "--link-C":
+      if linkedC == false:
+        DATA.LinkerFiles.add("-L:-lc")
+        DATA.LinkerFiles.add("-L:-lm")
+        DATA.LinkerFiles.add("-L:--dynamic-linker")
+        DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+        linkedC = true
+    of "--noStdlib":
+      Data.noStdlib = true
+    of "--script":
+      DATA.isScript = true
+    of "-O":
+      DATA.State = "generate-object"
+    of "-r", "--run":
+      DATA.State = "run"
+    of "-GVM":
+      DATA.Backend = "-b:gravity"
+    else:
+      if DATA.Input == "" and not arg.startsWith("-"):
+          DATA.Input = arg
+    counter.inc
+
+  # Auto-detect .Newtonproj.toml
+  if DATA.Input == "" and fileExists(".Newtonproj.toml"):
+      var currentSection = ""
+
+      for rawLine in lines(".Newtonproj.toml"):
+          let line = rawLine.strip()
+          if line == "" or line.startsWith("#"): continue
+
+          if line.startsWith("[") and line.endsWith("]"):
+              currentSection = line[1 .. ^2]
+              continue
+
+          let parts = line.split("=", 1)
+          if parts.len == 2 and currentSection == "Project":
+              let key = parts[0].strip()
+              let val = parts[1].strip().replace("\"", "")
+
+              if key == "entrypoint":
+                  DATA.Input = val
+              elif key == "name" and DATA.Output == "":
+                  DATA.Output = "bin" / val
+
+  if DATA.Input == "" and DATA.State != "help":
+      echo "\e[1;31merror:\e[0m no input file provided or .Newtonproj.toml found."
+      quit(1)
+
+  return DATA

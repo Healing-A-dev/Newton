@@ -1,0 +1,46 @@
+using Std::OS
+using storageManager
+using gameManager
+
+set passwordAttempts*: 0
+
+fun login:
+    | Instance Variables
+    set login: false
+
+    println "Insert username: "
+    set username: IO.Readln
+    set Storage: storageManager.Storage.retrieve $gameManager.__GAME, $username
+
+    if $Storage != null:
+        Storage: storageManager.Storage.retrieve $gameManager.__GAME{"username"}, "password"
+    end
+
+    OS.ExecCmd "clear"
+
+    while not $login and $passwordAttempts < 5:
+        println "Enter password: "
+        set password: IO.readln
+        if $password != $Storage:
+            printlnln "Incorrect Password"
+            passwordAttempts: $passwordAttempts + 1
+        else:
+            login: true
+            return $username
+        end
+    end
+
+    if $passwordAttempts == 5:
+        gameManager.__GAME{$username}.locked: true
+        @die "Too many unsucessful login attempts. Your account has been locked. TO unlock your account, please either change your password or contact us to unlock you account."
+    end
+end
+
+
+fun Main:
+    set username: login
+    set player: $storageManager.Storage.retrieve $username, "playerInfo"
+    if $player{"new"} or player{"ascend"}:
+        freshStart player{"ascend"}
+    end
+end

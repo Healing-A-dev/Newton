@@ -1,0 +1,102 @@
+using Std::String
+using Std::System
+
+set currentCompilingFile*: "main.nt"
+set ERRCOUNT*: 0
+
+fun PAD: @args char, padding
+	set output: ""
+	for &s, 0, $padding, 1:
+		output: $output >> $char
+	end
+	return $output
+end
+
+fun STRIP_LEADING: @args source
+	set char_array: String.Split $source, ""
+	set start_pos: 0
+	set hit_char: false
+
+	| Seeing if source has leading whitespace
+	if $char_array{0} == " ": return [@ok, $source] end
+	while not $hit_char:
+		if $char_array{$start_pos} == " ":
+			char_array{$start_pos}: ""
+		else:
+			hit_char: true
+		end
+	end
+	set stripped: Collection.Join $char_array, ""
+	return [@ok, $stripped]
+end
+
+fun ERR: @args Msg, Line, Code, Hint
+	| Exit early if more than 10 errors are found (to prevent flooding the terminal)
+	if $errors.ERRCOUNT > 10:
+		println "Compilitaion Failed With <\x1b[1;31m" << (string $errors.ERRCOUNT) << "+\x1b[0m> Errors"
+		System.Exit 1
+	end
+
+	set finalCode: $Code
+	set finalHint: $Hint
+
+	if $finalCode == "":
+		if (String.Has $Msg, "Unexpected character"):
+			finalCode: "E001"
+			if $finalHint == "": 
+				finalHint: "Unexpcted symbol found. Did you make a typo?"
+			end
+		elseif (String.Has $Msg, "Expected") or (String.Has $Msg, "Unknown statement"):
+			finalCode: "E002"
+			if $finalHint == "":
+				finalHint: "Unexpected token encountered. Check for missing commas, colons, or mismatched/missing brackets/parenthesis."
+			end
+		elseif (String.Has $Msg, "Could not find module"):
+			finalCode: "E003"
+			if $finalHint == "":
+				finalHint: "Module resolution failed. Check if the file exists in the correct directory, or verify your 'using' path."
+			end
+		else:
+			finalCode: "E099"
+			if $finalHint == "":
+				finalHint: "An internal compilation error has occured."
+			end
+		end
+	end
+
+	if $errors.ERRCOUNT == 0:
+		println "\x1b[1;31merror[" << $finalCode << "]\x1b[0m\x1b[1m: " << $Msg << "\x1b[0m"
+		println "\x1b[1;34m  --> \x1b[0m" << $errors.currentCompilingFile << ":" << $Line
+		println "\x1b[1;34m   |\x1b[0m"
+
+		set lineContent: ""
+		if (fileExists $errors.currentCompilingFile):
+			set lines: String.Split (fcontent $errors.currentCompilingFile), "\n"
+			if $Line > 0 and $Line <= (sizeof $lines):
+				lineContent: $lines{$Line - 1}
+			end
+		end
+
+		set lineStr: string $Line
+		set pad: errors.PAD " ", (sizeof $lineStr)		
+
+		if $lineContent != "":
+			println " \x1b[1;34m" << $lineStr << " | \x1b[0m" << $lineContent
+
+			set trimmed: errors.STRIP_LEADING $lineContent
+			set spaceCount: (sizeof $lineContent) - (sizeof $trimmed)
+			set squiggly: (errors.PAD " ", $spaceCount) << "\x1b[1;31m" << (errors.PAD "^", (sizeof $trimmed)) << "\x1b[0m"
+
+			println " \x1b[1;34m" << $pad << " | \x1b[0m" << $squiggly
+		else:
+			println "\x1b[1;34m" << $lineStr << " | \x1b[0m <source code unavailable>"
+		end
+
+		println "\x1b[1;34m   |\x1b[0m"
+		if $finalHint != "":
+			println "\x1b[1;36m   = help\x1b[0m: " << $finalHint
+		end
+		println "\n"
+	end
+	errors.ERRCOUNT: $errors.ERRCOUNT + 1
+end

@@ -1,0 +1,165 @@
+;------------------------------------------------------------------------------------------------------------------------|
+; > Date: July 11th, 2026                                                                                                |
+; > Description: This program also for newton code to be ran as if it were a interpreted scripting language.             |
+;                It removes the need for a 'main' function (actually breaks if you try to include one).                  |
+;                All code (that is not within a defined function or macro) is automatically wrapped in a 'main' function.|
+;                However, when using a .nts file (or running a normal .nt as a script file with the --script flag), you  |
+;                can no longer build to a specific platform, link with external files, specify an output file, generate  |
+;                an executable, and can no longer use any build flags.                                                   |
+;                ---                                                                                                     |
+;                If you wish to have any of the features mentioned above, use the default .nt extension.                 |
+; > Reason: Allows for a scripting like experience with a compiled language.                                             |
+;------------------------------------------------------------------------------------------------------------------------|
+
+; Imports
+using Std::OS
+using Std::String
+using Std::File
+
+; Global Variables
+; Local in this case means functions and macros defined within the current file
+set LOCAL_FUNCTION_MARCRO_BUFFER*: ()
+set LOCAL_LINES_TO_DELETE*: []
+set FILEMODE_WRITE*: 577
+
+; Taken right out of the Std::Base.nt file
+; This was done to be able to use the --noStdlib flag to reduce file size
+fun die: @args msg, errno
+	if $errno == 0:
+		errno: 1
+	end
+	sys_err $msg     ; Intrinsic call [NOT RECOMMENDED, SIMPLY TO USE '--noStdlib']
+	proc_exit $errno ; Intrinsic call [NOT RECOMMENDED, SIMPLY TO USE '--noStdlib']
+end
+
+fun stripLeadingSpaces: @args str
+    set chararacters: String.Std_Split $str, ""
+    if (sizeof $chararacters) == 0: return "" end
+    set output_str: ""
+    for &char, 0, (sizeof $chararacters), 1:
+        if ($chararacters{$char} != " ") and ($chararacters{$char} != "\t"):
+            output_str: String.Sub $str, $char, (sizeof $str)
+            break
+        end
+    end
+    return $output_str
+end
+
+fun stripTrailingSpaces: @args str
+    set chararacters: String.Std_Split (String.Reverse $str), ""
+    if (sizeof $chararacters) == 0: return "" end
+    set output_str: ""
+    for &char, 0, (sizeof $chararacters), 1:
+        if ($chararacters{$char} != " ") and ($chararacters{$char} != "\t"):
+            output_str: String.Sub $str, $char, (sizeof $str)
+            break
+        end
+    end
+    return $output_str
+end
+
+fun processFunctions: @args file, start
+    set depthCounter: 0
+    for &line, $start, (sizeof $file), 1:
+        set stripped_line: stripLeadingSpaces $file{$line}
+		stripped_line: stripTrailingSpaces $stripped_line
+
+		match (String.Sub $stripped_line, 0, 2):
+		    "if" -> depthCounter: $depthCounter + 1
+			"wh" -> if (String.Sub $stripped_line, 2, 3) == "ile":
+			            depthCounter: $depthCounter + 1
+					end
+			"fo" -> if ((String.Sub $stripped_line, 2, 1) == "r") or (String.Sub $stripped_line, 2, 5) == "reach":
+			            depthCounter: $depthCounter + 1
+					end
+			"ma" -> if (String.Sub $stripped_line, 2, 3) == "tch":
+                        depthCounter: $depthCounter + 1
+					end
+			"fu" -> if (String.Sub $stripped_line, 2, 1) == "n" and $depthCounter > 0:
+                        die "Functions can only be defined at top level <:" << (string $depthCounter) << ">", 1
+                    else:
+                        depthCounter: $depthCounter + 1
+					end
+			"de" -> if (String.Sub $stripped_line, 2, 6) == "fmacro" and $depthCounter > 0:
+                        die "Macros can only be defined at top level <:" << (string $depthCounter) << ">", 1
+                    else:
+                        depthCounter: $depthCounter + 1
+                    end
+		end
+
+		if $depthCounter > 0:
+		    if (String.Sub $stripped_line, 0, 3) == "end":
+				depthCounter: $depthCounter - 1
+			elseif (String.Sub $stripped_line, (sizeof $stripped_line) - 3, 3) == "end" and (String.Sub $stripped_line, (sizeof $stripped_line) - 4, 1) == " ":
+				depthCounter: $depthCounter - 1
+			end
+			LOCAL_FUNCTION_MARCRO_BUFFER{(sizeof $LOCAL_FUNCTION_MARCRO_BUFFER)}: $file{$line}
+			LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+		else:
+		  LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+		  return 1
+		end
+    end
+end
+
+fun main:
+	set file: String.Std_Split (File.Std_ReadEntireFile (sys_argv 0)), "\n" ; Intrinsic argv call [NOT RECOMMENDED]
+
+	; Output file name and extension
+	set out_filename: String.Std_Split (sys_argv 0), "." ; Intrinsic argv call [NOT RECOMMENDED]
+	set in_extension: $out_filename{1}
+	out_filename: "__@nout." << $out_filename{0} << "__"
+
+	; Initial pass to capture functions and macros
+	for &line, 0, (sizeof $file) - 1, 1:
+	    set stripped_line: stripLeadingSpaces $file{$line}
+		stripped_line: stripTrailingSpaces $stripped_line
+		match (String.Sub $stripped_line, 0, 3):
+		    "fun" -> processFunctions $file, $line
+			"def" -> if (String.Sub $stripped_line, 3, 5) == "macro":
+                processFunctions $file, $line
+            end
+            "usi" -> if (String.Sub $stripped_line, 3, 2) == "ng":
+                LOCAL_FUNCTION_MARCRO_BUFFER{(sizeof $LOCAL_FUNCTION_MARCRO_BUFFER)}: $file{$line}
+                LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+            end
+		end
+	end
+
+	; Deleting unwanted lines of code
+	for &idx, 0, (sizeof $LOCAL_LINES_TO_DELETE), 1:
+	    file{$idx}: ""
+	end
+
+	; Writing function/macro buffer
+	set fd: File.Std_Open $out_filename << ".nt", $FILEMODE_WRITE
+	set idx: (sizeof $LOCAL_FUNCTION_MARCRO_BUFFER) - 1
+	while $idx >= 0:
+	  File.Std_Write $fd, $LOCAL_FUNCTION_MARCRO_BUFFER{$idx} << "\n"
+		idx: $idx - 1
+	end
+
+	; Writing remainging content
+	File.Std_Write $fd, "fun main:\n"
+	for &line, 0, (sizeof $file) - 1, 1:
+	    if (sizeof $file{$line}) > 0:
+			File.Std_Write $fd, "    " << $file{$line} << "\n"
+		end
+	end
+	File.Std_Write $fd, "end"
+	File.Std_Close $fd
+
+	; Compiling and running code
+	OS.Execute "newton run " << $out_filename << ".nt"
+	OS.Execute "rm " << $out_filename << ".nt"
+	OS.Execute "rm " << $out_filename
+end
+
+;-----------------------|
+; > Flags {             |
+;   --noStdlib          |
+;   -v (--verbose)      |
+; }                     |
+;-----------------------|
+; > Signature: %H<JB>%  |
+;-----------------------|

@@ -1,0 +1,90 @@
+using std::Web
+using std::IO
+using std::String
+using std::Json
+using std::Termcolor
+
+fun send_request:
+    @args path
+    
+    | 1. Connect to the local KV Server
+    set client: net_create 0
+    set status: Web.connect $client, 8080, 16777343
+    if $status < 0:
+        IO.println Termcolor.error "[-] Cannot connect to KV Server on port 8080."
+        return
+    end
+    
+    | 2. We use HTTP GET for all actions since our server routes based on the URL path
+    set req: "GET " << $path << " HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n"
+    Web.send $client, $req
+    
+    | 3. Get response and close socket
+    set res: Web.recieve $client, 4096
+    Web.close $client
+    
+    | 4. Parse HTTP and JSON
+    set parts: String.split $res, "\r\n\r\n"
+    if (sizeof $parts) > 1:
+        set body: $parts{1}
+        set data: Json.parse $body
+        
+        | If our JSON has an 'error' key, it means something went wrong
+        if (typeof $data{"error"}) != "int":
+            IO.println Termcolor.error "[-] Error: " << $data{"error"}
+        else:
+            | Success!
+            if (typeof $data{"value"}) != "int":
+                IO.println Termcolor.success "[+] " << $data{"key"} << " = " << $data{"value"}
+            else:
+                IO.println Termcolor.success "[+] Action completed successfully."
+            end
+        end
+    else:
+        IO.println Termcolor.error "[-] Invalid server response."
+    end
+end
+
+fun main:
+    IO.println Termcolor.text $Termcolor.cyan, "--- Newton KV Database REPL ---"
+    IO.println "Commands: GET <key>, SET <key> <value>, DEL <key>, EXIT"
+    
+    while 1 == 1:
+        set _input: IO.prompt "newton-db> "
+        
+        if $_input == "EXIT":
+            IO.println "Goodbye!"
+            break
+        end
+        
+        set args: String.split $_input, " "
+        set cmd: $args{0}
+        
+        if $cmd == "GET":
+            if (sizeof $args) >= 2:
+                Web.send ("/get/" << $args{1})
+            else:
+                IO.println "Usage: GET <key>"
+            end
+            
+        elseif $cmd == "SET":
+            if (sizeof $args) >= 3:
+                Web.send ("/set/" << $args{1} << "/" << $args{2})
+            else:
+                IO.println "Usage: SET <key> <value>"
+            end
+            
+        elseif $cmd == "DEL":
+            if (sizeof $args) >= 2:
+                Web.send ("/delete/" << $args{1})
+            else:
+                IO.println "Usage: DEL <key>"
+            end
+            
+        else:
+            if (sizeof $_input) > 0:
+                IO.println "Unknown command. Try GET, SET, or DEL."
+            end
+        end
+    end
+end

@@ -1,0 +1,16 @@
+; Language: Newton
+; Lines of Code: 11
+; Imports: 0
+
+fun factorial: @args count
+  if $count <= 1:
+    return $count
+  end
+  return $count * (factorial $count - 1)
+end
+
+fun main:
+  set count: @readln "Enter an integer value: "
+  set res_result: factorial int $count
+  @println "The result of factorial " << string $count <<  " is: " << string $res_result
+end

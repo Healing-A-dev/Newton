@@ -1,0 +1,14 @@
+using errors
+using lexer
+using ast
+using parser
+
+set INPUT_FILE*: "test.nt"
+set ERRNO: 0
+
+fun main:
+  errors.currentCompilingFile: $INPUT_FILE
+  set source: readfile $INPUT_FILE
+  set tokens: lexer.lex $source
+  set p: parser.newParser $tokens
+end
