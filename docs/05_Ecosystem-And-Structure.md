@@ -47,6 +47,27 @@ end
 
 Why does Newton do this? This explicit internal namespacing ensures that when the compiler links multiple files together, there is zero ambiguity. Since newton amalgomates all files during compilation, it prevents accidental shadowing and makes it instantly clear to any developer reading the file exactly where a function or global state originates.
 
+### Importing Local Files
+To import your own modules or other `.nt` files into your project, use the `using` keyword followed by the file name (without the `.nt` extension). 
+
+Once imported, you must use the file's name as the namespace to access its functions and global variables.
+
+```asm
+; File: main.nt
+
+; Imports 'Bad_Math.nt' from the same directory
+using Bad_Math
+
+; Import follow the following 
+; Be sure NOT to include the file extension
+using path::to::file
+
+fun main:
+    set result: Bad_Math.add 10, 5
+    @println "The result is: {}", $result
+end
+```
+
 ## The Prelude and Utility Wrappers
 
 To make development faster, Newton automatically injects a prelude (`Base.nt`) into every project unless you explicitly compile with the `--noStdlib` flag.
