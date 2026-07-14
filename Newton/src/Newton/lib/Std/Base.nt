@@ -1,0 +1,347 @@
+; Filename: Base.nt
+; Description: Base module for the newton standard library (automatically included)
+; Date: April 30th, 2026 *
+
+using Std::IO
+using Std::File
+using Std::String
+using Std::Collection
+using Std::System
+
+; ------------------------------------------
+; Global Variables
+; ------------------------------------------
+set fmRead*: 0
+set fmWrite*: 577
+set fmAppend*: 1089
+set __iota__*: 0
+set argc*: Base_newton_get_argc
+set argv*: Base_newton_get_argv
+
+; ------------------------------------------
+; Global Error Handling Macros
+; ------------------------------------------
+defmacro ok: return "ok" end
+defmacro err: return "error" end
+
+defmacro capture:
+	return $M_ARGV{0}
+end
+
+defmacro isERR:
+	set res: $M_ARGV{0}
+	return ($res{0} == "error")
+end
+
+defmacro getERR:
+	set msg: $M_ARGV{0}
+	return $msg{1}
+end
+
+defmacro assert:
+	set [stmt,  on_err]: [$M_ARGV{0}, $M_ARGV{1}]
+	set args: []
+	if (sizeof $M_ARGV) > 2: args: $M_ARGV{2} end
+	if $stmt == 0:
+		if (typeof $on_err) == "unknown":
+			return ["ok", call $on_err($args{0}, $args{1}, $args{2}, $args{3}, $args{4}, $args{5}, $args{6}, $args{7}, $args{8}, $args{9})]
+		else:
+			return ["error", "Failed assertion: " << $on_err]
+		end
+	end
+	return ["ok", 1]
+end
+
+; ----------------------------------------------------------------
+; Print/Println Macros (Variadic Print/Println with interpolation)
+; ----------------------------------------------------------------
+defmacro println:
+    set str_val: $M_ARGV{0}
+    if (String.Has (string $str_val), "{}"):
+		set [start, rep_counter]: [0, 0]
+        set search: substring $str_val, $start, 2
+        set arg_length: sizeof $M_ARGV
+        while $start != (sizeof $str_val):
+        	if (substring $search, 0, 1) == "{" and (substring $search, 1, 1) == "}" :
+				if $arg_length - 1 != $rep_counter:
+					rep_counter: $rep_counter + 1
+					if (typeof $M_ARGV{$rep_counter}) == "map" or (typeof $M_ARGV{$rep_counter}) == "list":
+						return ["error", "Cannot interpolate type '" << (typeof $M_ARGV{$rep_counter}) << "'"]
+					end
+					set chars: String.Std_Split $str_val, ""
+					chars{$start}: string $M_ARGV{$rep_counter}
+					chars{$start + 1}: ""
+					str_val: Collection.Join $chars, ""
+				end
+        	end
+        	start: $start + 1
+        	search: substring $str_val, $start, 2
+        end
+
+		if $arg_length - 1 > $rep_counter:
+			IO.Std_Print $str_val
+			for &s, $rep_counter + 1, $arg_length, 1:
+				IO.Std_Print " " << $M_ARGV{$s}
+			end
+			IO.Std_Print "\n"
+		else:
+			IO.Std_Println $str_val
+		end
+		return ["ok", 1]
+    end
+
+    ; No Interpolation (Regular Print) [Base]
+	set arg_length: sizeof $M_ARGV
+	if $arg_length < 2:
+		IO.Std_Println $str_val
+	else:
+	;	[Variadic]
+		IO.Std_Print "" << (string $str_val) << " "
+		for &s, 1, $arg_length, 1:
+			if $s != $arg_length - 1:
+				match (typeof $M_ARGV{$s}):
+					"string" -> prints $M_ARGV{$s}
+					"number" -> prints $M_ARGV{$s}
+					"float"  -> prints $M_ARGV{$s}
+					"list"   -> IO.Std_Print $M_ARGV{$s}
+					"map"    -> IO.Std_Print $M_ARGV{$s}
+				end
+				prints " "
+			else:
+				match (typeof $M_ARGV{$s}):
+					"string" -> prints $M_ARGV{$s}, "\n"
+					"number" -> prints $M_ARGV{$s}, "\n"
+					"float"  -> prints $M_ARGV{$s}, "\n"
+					"list"   -> IO.Std_Println $M_ARGV{$s}
+					"map"    -> IO.Std_Println $M_ARGV{$s}
+				end
+			end
+		end
+	end
+	return ["ok", 1]
+end
+
+defmacro print:
+    set str_val: $M_ARGV{0}
+    if (String.Has (string $str_val), "{}"):
+		set [start, rep_counter]: [0, 0]
+        set search: substring $str_val, $start, 2
+        set arg_length: sizeof $M_ARGV
+        while $start != (sizeof $str_val):
+        	if (substring $search, 0, 1) == "{" and (substring $search, 1, 1) == "}" :
+				if $arg_length - 1 != $rep_counter:
+					rep_counter: $rep_counter + 1
+					if (typeof $M_ARGV{$rep_counter}) == "map" or (typeof $M_ARGV{$rep_counter}) == "list":
+						return ["error", "Cannot interpolate type '" << (typeof $M_ARGV{$rep_counter}) << "'"]
+					end
+					set chars: String.Std_Split $str_val, ""
+					chars{$start}: string $M_ARGV{$rep_counter}
+					chars{$start + 1}: ""
+					str_val: Collection.Join $chars, ""
+				end
+        	end
+        	start: $start + 1
+        	search: substring $str_val, $start, 2
+        end
+
+		if $arg_length - 1 > $rep_counter:
+			IO.Std_Print $str_val
+			for &s, $rep_counter + 1, $arg_length, 1:
+				IO.Std_Print " " << $M_ARGV{$s}
+			end
+		else:
+			IO.Std_Print $str_val
+		end
+		return ["ok", 1]
+    end
+
+    ; No Interpolation (Regular Print) [Base]
+	set arg_length: sizeof $M_ARGV
+	if $arg_length < 2:
+		IO.Std_Print $str_val
+	else:
+	;	[Variadic]
+		IO.Std_Print "" << (string $str_val) << " "
+		for &s, 1, $arg_length, 1:
+			if $s != $arg_length - 1:
+				match (typeof $M_ARGV{$s}):
+					"string" -> prints $M_ARGV{$s}
+					"number" -> prints $M_ARGV{$s}
+					"float"  -> prints $M_ARGV{$s}
+					"list"   -> IO.Std_Print $M_ARGV{$s}
+					"map"    -> IO.Std_Print $M_ARGV{$s}
+				end
+				prints " "
+			else:
+				match (typeof $M_ARGV{$s}):
+					"string" -> prints $M_ARGV{$s}
+					"number" -> prints $M_ARGV{$s}
+					"float"  -> prints $M_ARGV{$s}
+					"list"   -> IO.Std_Print $M_ARGV{$s}
+					"map"    -> IO.Std_Print $M_ARGV{$s}
+				end
+			end
+		end
+	end
+	return ["ok", 1]
+end
+
+; ------------------------------------------
+; Global IO Function Wrappers
+; ------------------------------------------
+defmacro readln:
+	if (sizeof $M_ARGV) < 1:
+		return @capture IO.Std_Readln
+	else:
+		return @capture IO.Std_Prompt $M_ARGV{0}
+	end
+end
+
+fun die: @args msg, errno
+	if $errno == 0:
+		errno: 1
+	end
+	sys_err $msg
+	proc_exit $errno
+end
+
+; ------------------------------------------
+; Global File Function Wrappers
+; ------------------------------------------
+fun fopen: @args file, flags
+	return @capture File.Std_Open $file, $flags
+end
+
+fun fwrite: @args fd, data
+	return @capture File.Std_Write $fd, $data
+end
+
+fun fwriteBytes: @args fd, data
+	return @capture File.Std_WriteBytes $fd, $data
+end
+
+fun fclose: @args fd
+	return @capture File.Std_Close $fd
+end
+
+fun fsizeof: @args file
+	return @capture File.Std_Sizeof $file
+end
+
+fun readfile: @args file
+	return @capture File.Std_ReadEntireFile $file
+end
+
+fun fgets: @args fd, len
+	return @capture File.Std_Read $fd, $len
+end
+
+fun fileExists: @args file
+	return @capture File.Std_Exists $file
+end
+
+fun deleteFile: @args file
+	return @capture File.Std_Delete $file
+end
+
+fun newDirectory: @args path
+	return @capture File.Std_NewDirectory $path
+end
+
+; ------------------------------------------
+; Global Collection Functions/Macros
+; ------------------------------------------
+fun list: @args val
+	return @capture Collection.Std_ToList $val
+end
+
+fun map: @args val
+	return @capture Collection.Std_ToMap $val
+end
+
+fun push: @args map_list, val
+	return @capture Collection.Std_Push $map_list, $val
+end
+
+fun pop: @args map_list
+	return @capture Collection.Std_Pop $map_list
+end
+
+fun delete: @args map_list, key
+	return @capture Collection.Std_Remove $map_list, $key
+end
+
+defmacro List:
+	IO.Std_Println "Broken currently [WIP]"
+	;return Collection.Std_MallocArray $M_ARGV{0}
+	return ["ok", []]
+end
+
+; ------------------------------------------
+; Global System Functions (Usable but not practical)
+; ------------------------------------------
+fun Base_newton_get_argc:
+	return ["ok", (System.Std_Argc 0)]
+end
+
+fun Base_newton_get_argv:
+	set system_args: []
+	for &arg, 0, ($argc - 1), 1:
+	  system_args{$arg}: System.Std_Argv $arg
+	end
+	return ["ok", $system_args]
+end
+
+fun exit: @args errno
+	System.Std_Exit $errno
+end
+
+; ------------------------------------------
+; Global String Functions/Macros
+; ------------------------------------------
+defmacro split:
+	set delim: ""
+	@assert (((sizeof $M_ARGV) > 0), "Invalid number of arguments for macro 'split'; Expected 1, got 0")
+	@assert (((typeof $M_ARGV{0}) == "string"), "Invalid argument #1 for macro 'split'; Expected string, got " << (typeof $M_ARGV{0}))
+	if (sizeof $M_ARGV) == 2:
+		@assert (((typeof $M_ARGV{1}) == "string"), "Invalid argument #2 for macro 'split'; Expected string, got " << (typeof $M_ARGV{0}))
+		delim: $M_ARGV{1}
+	elseif (sizeof $M_ARGV) > 2:
+		die "Invalid number of argmuents for macro 'split'; Max 2, got " << (string (sizeof $M_ARGV)), 1
+	end
+	return @capture String.Std_Split $M_ARGV{0}, $delim
+end
+
+defmacro splitToMap:
+	set delim: ""
+	@assert (((sizeof $M_ARGV) > 0), "Invalid number of arguments for macro 'splitToMap'; Expected 1, got 0")
+	@assert (((typeof $M_ARGV{0}) == "string"), "Invalid argument #1 for macro 'splitToMap'; Expected string, got " << (typeof $M_ARGV{0}))
+	if (sizeof $M_ARGV) == 2:
+		@assert (((typeof $M_ARGV{1}) == "string"), "Invalid argument #2 for macro 'splitToMap'; Expected string, got " << (typeof $M_ARGV{0}))
+		delim: $M_ARGV{1}
+	elseif (sizeof $M_ARGV) > 2:
+		die "Invalid number of argmuents for macro 'splitToMap'; Max 2, got " << (string (sizeof $M_ARGV)), 1
+	end
+	return @capture String.Std_SplitToMap $M_ARGV{0}, $delim
+end
+
+; ------------------------------------------
+; Global Booleans (Functions to avoid having to use '$true', '$false') [OPTIONAL]
+; ------------------------------------------
+fun true: return 1 end
+fun false: return 0 end
+
+; ------------------------------------------
+; Utility Functions
+; ------------------------------------------
+fun pass: end
+
+fun iota:
+	__iota__: $__iota__ + 1
+	return ["ok", $__iota__]
+end
+
+fun iota_reset:
+	__iota__: 0
+	return ["ok", 1]
+end

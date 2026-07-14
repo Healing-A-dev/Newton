@@ -1,0 +1,15 @@
+; Language: Newton
+; Lines of Code: 10
+; Imports: 0
+
+fun fibonacci: @args n
+  if $n <= 1:
+    return $n
+  end
+  return (fibonacci $n - 1) + (fibonacci $n - 2)
+end
+
+fun main:
+  set result: fibonacci 10
+  @println $result
+end

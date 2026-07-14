@@ -1,0 +1,251 @@
+using Std::String
+using enum
+using errors
+
+| Create token enums (this is make the file easier to debug)
+| enum.InitTokenEnums
+
+set keywords*: (
+	"set":      $enum.tokSet,
+	"if":       $enum.tokIf,
+	"elseif":   $enum.tokElseIf,
+	"else":     $enum.tokElse,
+	"end":      $enum.tokEnd,
+	"fun":      $enum.tokFun,
+	"for":      $enum.tokFor,
+	"foreach":  $enum.tokForeach,
+	"while":    $enum.tokWhile,
+	"return":   $enum.tokReturn,
+	"using":    $enum.tokUsing,
+	"input":    $enum.tokInput,
+	"call":     $enum.tokCall,
+	"and":      $enum.tokAnd,
+	"or":       $enum.tokOr,
+	"match":    $enum.tokMatch,
+	"not":      $enum.tokNot,
+	"shl":      $enum.tokShl,
+	"in":       $enum.tokIn,
+	"defmacro": $enum.tokDefmacro,
+	"exposed":  $enum.tokExposed
+)
+
+| Token Creator
+fun newToken: @args kind, lexeme, line
+	set Token: ("kind": $kind, "lexeme": $lexeme, "line": $line)
+	return [@ok, $Token]
+end
+
+| Alphanumeric Checkers
+fun isAlphanumeric: @args char
+	set ascii: String.Ascii $char
+	if ($ascii >= 48) and ($ascii <= 57):
+		return [@ok, 1]
+	elseif ($ascii >= 65) and ($ascii <= 90):
+		return [@ok, 1]
+	elseif ($ascii >= 97) and ($ascii <= 122):
+		return [@ok, 1]
+	elseif $ascii == 95:
+		return [@ok, 1]
+	end
+	return [@ok, 0]
+end
+
+fun isAlphaAscii: @args char
+	set ascii: String.Ascii $char
+	if ($ascii >= 65) and ($ascii <= 90):
+		return [@ok, 1]
+	elseif ($ascii >= 97) and ($ascii <= 122):
+		return [@ok, 1]
+	end
+	return [@ok, 0]
+end
+
+| Digit Checker
+fun isDigit: @args char
+	set ascii: String.Ascii $char
+	if ($ascii >= 48) and ($ascii <= 57):
+		return [@ok, 1]
+	end
+	return [@ok, 0]
+end
+
+| Character combiner
+fun combine: @args  map_list, start, finish
+	set output: ""
+	for &pos, $start, ($finish + 1), 1:
+		output: $output << $map_list{$pos}
+	end
+	return [@ok, $output]
+end
+
+| Lexer
+fun lex: @args data
+	set tokens: []
+	set [start, current, line]: [0, 0, 1]
+	set data: String.Split $data, ""
+
+	while $current < (sizeof $data):
+		start: $current
+		set c: $data{$current}
+		current: $current + 1
+
+		| Symbols
+		if $c == "\n":
+			push $tokens, (lexer.newToken $enum.tokEol, $c, $line)
+			line: $line + 1
+		elseif ($c == " ") or ($c == "\r") or ($c == "\t"):
+		  set __discard__: 0
+		elseif $c == "|":
+			 while ($current < (sizeof $data)) and $data{$current} != "\n": current: $current + 1 end
+		elseif $c == "(": push $tokens, (lexer.newToken $enum.tokLParen, $c, $line)
+		elseif $c == ")": push $tokens, (lexer.newToken $enum.tokRParen, $c, $line)
+		elseif $c == "{": push $tokens, (lexer.newToken $enum.tokLBrace, $c, $line)
+		elseif $c == "}": push $tokens, (lexer.newToken $enum.tokRBrace, $c, $line)
+		elseif $c == "[": push $tokens, (lexer.newToken $enum.tokLBracket $c, $line)
+		elseif $c == "]": push $tokens, (lexer.newToken $enum.tokRBracket $c, $line)
+		elseif $c == ":":
+			if ($current < (sizeof $data)) and ($data{$current} == ":"):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokDoubleColon, "::", $line)
+			else:
+			 	push $tokens, (lexer.newToken $enum.tokColon, $c, $line)
+			end
+		elseif $c == ".": push $tokens, (lexer.newToken $enum.tokDot, $c, $line)
+		elseif $c == ",": push $tokens, (lexer.newToken $enum.tokComma, $c, $line)
+		elseif $c == "$": push $tokens, (lexer.newToken $enum.tokDollar, $c, $line)
+		elseif $c == "&": push $tokens, (lexer.newToken $enum.tokAmpersand, $c, $line)
+		elseif $c == "+": push $tokens, (lexer.newToken $enum.tokPlus, $c, $line)
+		elseif $c == "*": push $tokens, (lexer.newToken $enum.tokStar, $c, $line)
+		elseif $c == "/": push $tokens, (lexer.newToken $enum.tokSlash, $c, $line)
+		elseif $c == "%": push $tokens, (lexer.newToken $enum.tokMod, $c, $line)
+		elseif $c == "^": push $tokens, (lexer.newToken $enum.tokBitXor, $c, $line)
+
+		| Comparisons
+		| -, ->
+		elseif $c == "_":
+			if ($current < (sizeof $data)) and ($data{$current} == ">"):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokArrow, "->", $line)
+			else:
+				push $tokens, (lexer.newToken $enum.tokMinus, $c, $line)
+			end
+
+		| <, <=, <<
+		elseif $c == "<":
+			if ($current < (sizeof $data)) and ($data{$current} == "="):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokLe, "<=", $line)
+			elseif ($current < (sizeof $data)) and ($data{$current} == "<"):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokConcat, "<<", $line)
+			else:
+				push $tokens, (lexer.newToken $enum.tokLt, $c, $line)
+			end
+
+		| >, >=, >>
+		elseif $c == ">":
+			if ($current < (sizeof $data)) and ($data{$current} == "="):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokGe, ">=", $line)
+			elseif ($current < (sizeof $data)) and ($data{$current} == ">"):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokShr, ">>", $line)
+			else:
+				push $tokens, (lexer.newToken $enum.tokGt, $c, $line)
+			end
+
+		| ==, ERROR
+		elseif $c == "=":
+			if ($current < (sizeof $data)) and ($data{$current} == "="):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokEqEq, "==", $line)
+			else:
+					errors.ERR "Unexpected symbol '='. Did you mean '=='?", $line, "", ""
+			end
+
+		| !=, ERROR
+		elseif $c == "!":
+			if ($current < (sizeof $data)) and ($data{$current} == "="):
+				current: $current + 1
+				push $tokens, (lexer.newToken $enum.tokNeq, "!=", $line)
+			else:
+				errors.ERR "Unexpected symbol '!'. Did you mean '!='?", $line, "", ""
+			end
+
+		| Macro Handling
+		elseif $c == "@":
+			set text: "@"
+			while ($current < (sizeof $data)) and (lexer.isAlphanumeric $data{$current}):
+				text: $text << $data{$current}
+				current: $current + 1
+			end
+
+			| Macros
+			if $text == "@args":
+				push $tokens, (lexer.newToken $enum.tokAtArgs, $text, $line)
+			elseif $text == "@namespace":
+				push $tokens, (lexer.newToken $enum.tokNamespace, $text, $line)
+			else:
+				push $tokens, (lexer.newToken $enum.tokMacroRef, (String.Replace $text, "@", ""), $line)
+			end
+
+		| Strings
+		elseif $c == "\"":
+			set strVal: ""
+			while ($current < (sizeof $data)) and ($data{$current} != "\""):
+				if ($data{$current} == "\\") and ($current + 1 < (sizeof $data)):
+					strVal: $strVal << $data{$current}
+					current: $current + 1
+					strVal: $strVal << $data{$current}
+				else:
+					strVal: $strVal << $data{$current}
+				end
+				current: $current + 1
+			end
+			if ($current < (sizeof $data)) and ($data{$current} == "\""):
+				current: $current + 1
+			end
+			push $tokens, (lexer.newToken $enum.tokStringLit, $strVal, $line)
+		else:
+			if (lexer.isDigit $c):
+				while ($current < (sizeof $data)) and (lexer.isDigit $data{$current}):
+					current: $current + 1
+				end
+				if ($current < (sizeof $data)) and ($data{$current} == "."):
+					set isFloat: 0
+					if ($current + 1 < (sizeof $data)) and (lexer.isDigit $data{$current + 1}):
+						isFloat: 1
+					end
+					if $isFloat:
+						current: $current + 1
+						while ($current < (sizeof $data)) and (lexer.isDigit $data{$current}):
+							current: $current + 1
+						end
+						set decimal: lexer.combine $data, $start, $current
+						push $tokens, (lexer.newToken $enum.tokFloatLit, $decimal, $line)
+					else:
+						set number: lexer.combine $data, $start, $current
+						push $tokens, (lexer.newToken $enum.tokNumberLit, $number, $line)
+					end
+				else:
+					set number: lexer.combine $data, $start, $current
+					push $tokens, (lexer.newToken $enum.tokNumberLit, $number, $line)
+				end
+			elseif (lexer.isAlphaAscii $c) or ($c == "_") or ($c == "#"):
+				while ($current < (sizeof $data)) and ((lexer.isAlphanumeric $data{$current}) or $data{$current} == "_"):
+					current: $current + 1
+				end
+				set text: lexer.combine $data, $start, $current
+				if (Collection.HasKey $lexer.keywords, $text):
+					push $tokens, (lexer.newToken $lexer.keywords{$text}, $text, $line)
+				else:
+					push $tokens, (lexer.newToken $enum.tokIdentifier, $text, $line)
+				end
+			else:
+				errors.ERR "Unexpected character: '" << $c << "'", $line, "", ""
+			end
+		end
+	end
+	push $tokens, (lexer.newToken $enum.tokEof, "", $line)
+	return [@ok, $tokens]
+end

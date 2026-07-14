@@ -1,0 +1,120 @@
+using std::IO
+using std::Process
+using std::Math
+using std::Termcolor
+
+; --- Helper to get cell state safely (handles boundaries) ---
+fn get_cell:
+    @args grid, x, y, w, h
+    if $x < 0: return 0 end
+    if $x >= $w: return 0 end
+    if $y < 0: return 0 end
+    if $y >= $h: return 0 end
+
+    set idx: ($y * $w) + $x
+    return $grid{$idx}
+end
+
+; --- Helper to count alive neighbors ---
+fn count_neighbors:
+    @args grid, x, y, w, h
+    set count: 0
+    count: $count + (get_cell $grid, ($x - 1), ($y - 1), $w, $h)
+    count: $count + (get_cell $grid, $x, ($y - 1), $w, $h)
+    count: $count + (get_cell $grid, ($x + 1), ($y - 1), $w, $h)
+    count: $count + (get_cell $grid, ($x - 1), $y, $w, $h)
+    count: $count + (get_cell $grid, ($x + 1), $y, $w, $h)
+    count: $count + (get_cell $grid, ($x - 1), ($y + 1), $w, $h)
+    count: $count + (get_cell $grid, $x, ($y + 1), $w, $h)
+    count: $count + (get_cell $grid, ($x + 1), ($y + 1), $w, $h)
+    return $count
+end
+
+fn main:
+    set w: 15
+    set h: 15
+    set size: $w * $h
+
+    ; 1. Initialize the grid with random noise
+    set grid: []
+    set i: 0
+    while $i < $size:
+        ; 25% chance for a cell to start alive
+        set r: Math.random 4
+        if $r == 0:
+            set_index $grid, $i, 1
+        else:
+            set_index $grid, $i, 0
+        end
+        i: $i + 1
+    end
+
+    ; 2. The Main Game Loop
+    while 1 == 1:
+        ; Clear the terminal screen using ANSI hex codes
+        IO.print "\x1b[2J\x1b[H"
+        IO.println Termcolor.text $Termcolor.CYAN, "--- Newton's Game of Life ---"
+
+        ; Draw the current generation
+        set y: 0
+        while $y < $h:
+            set row_str: ""
+            set x: 0
+            while $x < $w:
+                set idx: ($y * $w) + $x
+                set cell: $grid{$idx}
+
+                if $cell == 1:
+                    row_str: $row_str << "[]"  ; Alive Cell
+                else:
+                    row_str: $row_str << ".."  ; Dead Cell
+                end
+
+                x: $x + 1
+            end
+            if $y == 0:
+                IO.println Termcolor.text $Termcolor.GREEN, $row_str
+            else:
+                IO.println $row_str
+            end
+            y: $y + 1
+        end
+
+        ; Calculate the next generation
+        set next_grid: []
+
+        ; Pre-fill next_grid with zeros
+        set i2: 0
+        while $i2 < $size:
+            set_index $next_grid, $i2, 0
+            i2: $i2 + 1
+        end
+
+        ; Apply Conway's Rules
+        set cy: 0
+        while $cy < $h:
+            set cx: 0
+            while $cx < $w:
+                set c_idx: ($cy * $w) + $cx
+                set state: $grid{$c_idx}
+                set neighbors: count_neighbors $grid, $cx, $cy, $w, $h
+
+                if $state == 1:
+                    ; Rule 1 & 2: Any live cell with 2 or 3 neighbors survives.
+                    if $neighbors == 2: set_index $next_grid, $c_idx, 1 end
+                    if $neighbors == 3: set_index $next_grid, $c_idx, 1 end
+                else:
+                    ; Rule 3: Any dead cell with exactly 3 neighbors becomes alive.
+                    if $neighbors == 3: set_index $next_grid, $c_idx, 1 end
+                end
+
+                cx: $cx + 1
+            end
+            cy: $cy + 1
+        end
+
+        ; Swap the arrays and wait before drawing the next frame
+        grid: $next_grid
+        Process.sleep 1
+    end
+end
