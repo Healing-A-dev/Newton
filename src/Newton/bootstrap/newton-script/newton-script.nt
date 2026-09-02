@@ -12,17 +12,17 @@
 ;------------------------------------------------------------------------------------------------------------------------|
 
 ; Imports
-using Std::OS
-using Std::String
-using Std::File
+using std::OS
+using std::String
+using std::File
 
 ; Global Variables
 ; Local in this case means functions and macros defined within the current file
-set LOCAL_FUNCTION_MARCRO_BUFFER*: ()
-set LOCAL_LINES_TO_DELETE*: []
+set localFunctionMacroBuffer*: ()
+set localLinesToDelete*: []
 set FILEMODE_WRITE*: 577
 
-; Taken right out of the Std::Base.nt file
+; Taken right out of the std::Base.nt file
 ; This was done to be able to use the --noStdlib flag to reduce file size
 fun die: @args msg, errno
 	if $errno == 0:
@@ -93,10 +93,10 @@ fun processFunctions: @args file, start
 			elseif (String.Sub $stripped_line, (sizeof $stripped_line) - 3, 3) == "end" and (String.Sub $stripped_line, (sizeof $stripped_line) - 4, 1) == " ":
 				depthCounter: $depthCounter - 1
 			end
-			LOCAL_FUNCTION_MARCRO_BUFFER{(sizeof $LOCAL_FUNCTION_MARCRO_BUFFER)}: $file{$line}
-			LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+			localFunctionMacroBuffer{(sizeof $localFunctionMacroBuffer)}: $file{$line}
+			localLinesToDelete{(sizeof $localLinesToDelete)}: $line
 		else:
-		  LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+		  localLinesToDelete{(sizeof $localLinesToDelete)}: $line
 		  return 1
 		end
     end
@@ -120,22 +120,22 @@ fun main:
                 processFunctions $file, $line
             end
             "usi" -> if (String.Sub $stripped_line, 3, 2) == "ng":
-                LOCAL_FUNCTION_MARCRO_BUFFER{(sizeof $LOCAL_FUNCTION_MARCRO_BUFFER)}: $file{$line}
-                LOCAL_LINES_TO_DELETE{(sizeof $LOCAL_LINES_TO_DELETE)}: $line
+                localFunctionMacroBuffer{(sizeof $localFunctionMacroBuffer)}: $file{$line}
+                localLinesToDelete{(sizeof $localLinesToDelete)}: $line
             end
 		end
 	end
 
 	; Deleting unwanted lines of code
-	for &idx, 0, (sizeof $LOCAL_LINES_TO_DELETE), 1:
+	for &idx, 0, (sizeof $localLinesToDelete), 1:
 	    file{$idx}: ""
 	end
 
 	; Writing function/macro buffer
 	set fd: File.Std_Open $out_filename << ".nt", $FILEMODE_WRITE
-	set idx: (sizeof $LOCAL_FUNCTION_MARCRO_BUFFER) - 1
+	set idx: (sizeof $localFunctionMacroBuffer) - 1
 	while $idx >= 0:
-	  File.Std_Write $fd, $LOCAL_FUNCTION_MARCRO_BUFFER{$idx} << "\n"
+	  File.Std_Write $fd, $localFunctionMacroBuffer{$idx} << "\n"
 		idx: $idx - 1
 	end
 
@@ -161,5 +161,5 @@ end
 ;   -v (--verbose)      |
 ; }                     |
 ;-----------------------|
-; > Signature: %H<JB>%  |
+; > Sig: %H<JB>%        |
 ;-----------------------|

@@ -76,22 +76,27 @@ proc addPackage(name: string, url: string, isLocal: bool) =
   writeFile(".Newtonproj.toml", fileLines.join("\n"))
   echo "\e[92m[NNPM Success]\e[0m Added '" & name & "' to .Newtonproj.toml!"
 
-# --- 3. THE AMALGAMATOR ---
-proc amalgamatePackage(pkgDir: string, outFile: string) =
-  echo "    \e[96m-> Amalgamating files into " & outFile & ".nt...\e[0m"
-  var combinedCode = "| Auto-generated Amalgamation by NNPM\n"
 
-  # Scan the package directory for all .nt files
-  for kind, path in walkDir(pkgDir):
-    if kind == pcFile and path.endsWith(".nt"):
-      combinedCode &= "\n| --- Source: " & extractFilename(path) & " ---\n"
-      combinedCode &= readFile(path) & "\n"
+# --- 3. THE MODULE LINKER ---
+# --- 3. THE MODULE INSTALLER ---
+proc installPackage(pkgDir: string, outName: string) =
+  echo "    \e[96m-> Installing source tree for " & outName & "...\e[0m"
 
-  # Create a hidden 'Packages' folder in the user's project to store the final files
   let projectCacheDir = getCurrentDir() / "packages"
   if not dirExists(projectCacheDir): createDir(projectCacheDir)
+  let targetDir = projectCacheDir / outName
 
-  writeFile(projectCacheDir / outFile & ".nt", combinedCode)
+  # 1. Clean old versions
+  if dirExists(targetDir): removeDir(targetDir)
+
+  # 2. Copy the raw source code into the project's packages folder
+  copyDir(pkgDir, targetDir)
+
+  # 3. Strip out version control files to keep the project clean
+  if dirExists(targetDir / ".git"): removeDir(targetDir / ".git")
+
+  echo "    \e[92m-> " & outName & " installed successfully!\e[0m"
+
 
 # --- 4. THE FETCHER ---
 proc fetchPackages(manifest: NpfManifest) =
@@ -99,7 +104,6 @@ proc fetchPackages(manifest: NpfManifest) =
   if not dirExists(globalCacheDir): createDir(globalCacheDir)
 
   for name, rawUrl in manifest.packages.pairs():
-
     if rawUrl.startsWith("local:"):
       let localPath = rawUrl[6..^1].replace("~", getEnv("HOME")) # Strip 'local:' and expand '~'
       echo "  \e[94m[Local Link]\e[0m " & name & " -> " & localPath
@@ -111,14 +115,19 @@ proc fetchPackages(manifest: NpfManifest) =
       # Look for package.nnpm directly in the live folder
       let pkgManifestPath = localPath / "package.nnpm"
       var outName = name
+      var entryFile = name & ".nt" # <--- [NEW] Default to package_name.nt
+
       if fileExists(pkgManifestPath):
         for line in lines(pkgManifestPath):
           if "Out ->" in line:
             let parts = line.split("Out ->")
-            if parts.len == 2: outName = parts[1].strip().replace("\"", ""); break
+            if parts.len == 2: outName = parts[1].strip().replace("\"", "")
+          elif "Entry ->" in line: # <--- [NEW] Parse the Entry point
+            let parts = line.split("Entry ->")
+            if parts.len == 2: entryFile = parts[1].strip().replace("\"", "")
 
       # Amalgamate straight from their live code!
-      amalgamatePackage(localPath, outName)
+      installPackage(localPath, outName)
       continue
 
     let url = rawUrl
@@ -128,7 +137,6 @@ proc fetchPackages(manifest: NpfManifest) =
       echo "  \e[92m[Cached]\e[0m " & name
     else:
       echo "  \e[93m[Fetching]\e[0m " & name & " from " & url & "..."
-      # Use HTTPS for git clone to ensure it works without SSH keys setup
       var cloneUrl = url
       if not cloneUrl.startsWith("http"): cloneUrl = "https://" & cloneUrl
 
@@ -141,17 +149,20 @@ proc fetchPackages(manifest: NpfManifest) =
     let pkgManifestPath = pkgDir / "package.nnpm"
     if fileExists(pkgManifestPath):
       var outName = name # Default to the package name
+      var entryFile = name & ".nt"
       for line in lines(pkgManifestPath):
         if "Out ->" in line:
           let parts = line.split("Out ->")
-          if parts.len == 2:
-            outName = parts[1].strip().replace("\"", "")
-            break
+          if parts.len == 2: outName = parts[1].strip().replace("\"", "")
+        elif "Entry ->" in line: # <--- [NEW] Parse the Entry point
+          let parts = line.split("Entry ->")
+          if parts.len == 2: entryFile = parts[1].strip().replace("\"", "")
 
-      amalgamatePackage(pkgDir, outName)
+      installPackage(pkgDir, outName)
     else:
       echo "    \e[93m[Warning]\e[0m No package.nnpm found in " & name & ". Treating as raw repository."
-      amalgamatePackage(pkgDir, name)
+      installPackage(pkgDir, name)
+
 
 # --- 5. CLI ENGINE ---
 proc main() =

@@ -1,5 +1,12 @@
 import strutils, os
 
+type
+  NewtonDiagnostic* = object of CatchableError
+    line*: int
+    code*: string
+    hint*: string
+
+var isLspMode*: bool = false
 var currentCompilingFile*: string = "main.nt"
 var ERRCOUNT*: int = 0
 
@@ -8,7 +15,7 @@ proc ERR*(Msg: string, Line: int, Code: string = "", Hint: string = ""): void =
   if ERRCOUNT >= 10:
     echo "Compilation Failed With <\e[1;31m" & $ERRCOUNT & "+\e[0m> Errors"
     quit(1)
-  
+
   var finalCode = Code
   var finalHint = Hint
 
@@ -26,34 +33,42 @@ proc ERR*(Msg: string, Line: int, Code: string = "", Hint: string = ""): void =
       finalCode = "E099"
       if finalHint == "": finalHint = "An internal compilation constraint was violated."
 
-  # Print the error header
+  if isLspMode:
+      var e = newException(NewtonDiagnostic, Msg)
+      e.line = Line
+      e.code = finalCode
+      e.hint = finalHint
+      raise e
+
   if ERRCOUNT == 0:
-    echo "\e[1;31merror[", finalCode, "]\e[0m\e[1m: ", Msg, "\e[0m"
-    echo "\e[1;34m  --> \e[0m", currentCompilingFile, ":", Line
-    echo "\e[1;34m   |\e[0m"
-  
+    echo "\e[1;31m--- [ COMPILER FAULT ] ---\e[0m"
+    echo "\e[1mCode   :\e[0m ", finalCode
+    echo "\e[1mFile   :\e[0m ", currentCompilingFile, " (Line ", Line, ")"
+    echo "\e[1mReason :\e[0m ", Msg
+    echo ""
+
     var lineContent = ""
     if fileExists(currentCompilingFile):
       let lines = readFile(currentCompilingFile).splitLines()
       if Line > 0 and Line <= lines.len:
         lineContent = lines[Line - 1]
-  
-    let lineStr = $Line
-    let pad = repeat(' ', lineStr.len)
-  
+
     if lineContent != "":
-      echo " \e[1;34m", lineStr, " | \e[0m", lineContent
-  
+      let lineStr = $Line
+      let pad = repeat(' ', lineStr.len)
+
+      echo "  ", lineStr, " | ", lineContent
+
       let trimmed = lineContent.strip(leading=true, trailing=false)
       let spaceCount = lineContent.len - trimmed.len
+
       let squiggly = repeat(' ', spaceCount) & "\e[1;31m" & repeat('^', max(1, trimmed.len)) & "\e[0m"
-  
-      echo " \e[1;34m", pad, " | \e[0m", squiggly
+      echo "  ", pad, " | ", squiggly
     else:
-      echo "\e[1;34m", lineStr, " | \e[0m <source code unavailable>"
-  
-    echo "\e[1;34m   |\e[0m"
+      echo "  <source code unavailable>"
+
+    echo ""
     if finalHint != "":
-      echo "\e[1;36m   = help\e[0m: ", finalHint
-    echo "\n"
+      echo "\e[1;30mHint   :\e[0m ", finalHint
+
   ERRCOUNT.inc

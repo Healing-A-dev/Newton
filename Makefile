@@ -1,4 +1,3 @@
-
 # Source Files
 RUNTIME_SRCS_LINUX = src/Newton/lib/runtime/linux64/mm.s        \
                		 src/Newton/lib/runtime/linux64/io.s        \
@@ -49,11 +48,12 @@ RUNTIME_OBJS_LINUX = $(RUNTIME_SRCS_LINUX:.s=.o)
 RUNTIME_OBJS_WINDOWS = $(RUNTIME_SRCS_WINDOWS:.s=.w64.o)
 CORE_OBJS = $(CORE_SRCS:.nim)
 
-HOME_DIR = /usr/local/lib
-BIN_DIR = /usr/local/bin
+HOME_DIR = $(HOME)/.local/lib
+BIN_DIR = $(HOME)/.local/bin
 INSTALL_DIR = newton
 COMPILER = nim
 BACKEND =
+HAS_GVM := $(shell command -v gvm 2> /dev/null)
 
 # Windows Assembler & Compiler (mingw32)
 ifeq ($(OS), Windows_NT)
@@ -68,11 +68,18 @@ else
 	CLI_EXT =
 endif
 
+ifeq ($(filter install-GVM,$(MAKECMDGOALS)),)
+ifeq ($(strip $(HAS_GVM)),)
+$(error GravityVM (gvm) is not installed. Please run 'make install-GVM' to install.)
+endif
+endif
+
 
 all: src/Newton/newton$(CLI_EXT) src/Newton/lib/libnewton.a src/Newtonian/nnpm
 
 src/Newton/newton: $(CORE_OBJS) src/Newton/lib/libnewton.o src/Newton/lib/libnewton.a
 	$(COMPILER) $(BACKEND) c -o:src/Newton/newton -d:release src/Newton/core/main.nim
+
 
 src/Newtonian/nnpm:
 	$(COMPILER) $(BACKEND) c -o:src/Newtonian/nnpm -d:release src/Newtonian/main.nim
@@ -95,28 +102,28 @@ src/Newton/lib/libnewton.a: $(RUNTIME_OBJS_WINDOWS)
 install: src/Newton/newton
 
 	@# Removing Old Newton File
-	rm $(BIN_DIR)/newton
-	rm $(BIN_DIR)/nnpm
+	rm -f $(BIN_DIR)/newton
+	rm -f $(BIN_DIR)/nnpm
 
 	@# Removing Uneeded Object Files
-	rm src/Newton/lib/runtime/linux64/*.o
-	rm src/Newton/lib/runtime/win64/*.w64.o
+	rm -f src/Newton/lib/runtime/linux64/*.o
+	rm -f src/Newton/lib/runtime/win64/*.w64.o
 
 	@# Creating Directories
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/bin
-	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/lib/Std
+	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/lib/std
 
 	@# Moving Files
 	cp src/Newton/newton $(HOME_DIR)/$(INSTALL_DIR)/bin/newton
 	cp src/Newtonian/nnpm $(HOME_DIR)/$(INSTALL_DIR)/bin/nnpm
 	cp src/Newton/lib/libnewton.o $(HOME_DIR)/$(INSTALL_DIR)/lib
 	cp src/Newton/lib/libnewton.a $(HOME_DIR)/$(INSTALL_DIR)/lib
-	cp src/Newton/lib/Std/* $(HOME_DIR)/$(INSTALL_DIR)/lib/Std
+	cp src/Newton/lib/std/* $(HOME_DIR)/$(INSTALL_DIR)/lib/std
 
 
 	@# Creating Symbolic Link
-	ln -s $(HOME_DIR)/$(INSTALL_DIR)/bin/newton $(BIN_DIR)/newton
-	ln -s $(HOME_DIR)/$(INSTALL_DIR)/bin/nnpm $(BIN_DIR)/nnpm
+	ln -sf $(HOME_DIR)/$(INSTALL_DIR)/bin/newton $(BIN_DIR)/newton
+	ln -sf $(HOME_DIR)/$(INSTALL_DIR)/bin/nnpm $(BIN_DIR)/nnpm
 
 	@# Compiling newton script file (for .nts files)
 	@# Needs to be compiled AFTER newton is already installed as it is written in itself
@@ -124,13 +131,33 @@ install: src/Newton/newton
 	cp src/Newton/newton@core__script.component $(HOME_DIR)/$(INSTALL_DIR)/bin/newton@core__script.component
 
 	@# Cleanup
-	rm src/Newton/newton
-	rm src/Newtonian/nnpm
-	rm src/Newton/newton@core__script.component
+	rm -f src/Newton/newton
+	rm -f src/Newtonian/nnpm
+	rm -f src/Newton/newton@core__script.component
+
+	@# Path Check
+	@echo ""
+	@echo "========================================"
+	@echo "Newton successfully installed!"
+	@echo "Checking if $(BIN_DIR) is in your PATH..."
+	@if ! echo "$$PATH" | grep -q "$(BIN_DIR)"; then \
+		echo "$(BIN_DIR) was not found in your PATH."; \
+		echo "To use Newton globally, add it manually to your shell configuration:"; \
+		echo "  Bash/Zsh (~/.bashrc or ~/.zshrc):"; \
+		echo '    export PATH="$$PATH:$(BIN_DIR)"'; \
+		echo "  Nushell (env.nu):"; \
+		echo "    \$$env.PATH = (\$$env.PATH | split row (char esep) | append '$(BIN_DIR)')"; \
+		echo "========================================"; \
+	fi
+
+install-GVM:
+	git clone -b Nightly https://github.com/Healing-A-Dev/GravityVM.git build
+	$(MAKE) -C build build HINTS="--hints:on"
+	rm -rf build
+	gvm clean-cahce
 
 
 clean:
 	rm -f $(RUNTIME_OBJS_LINUX) $(RUNTIME_OBJS_WINDOWS) src/Newton/lib/libnewton.o src/Newton/lib/libnewton.dll src/Newton/lib/libnewton.a src/Newton/newton
 
-.phony:
-	newton
+.PHONY: all clean install install-GVM

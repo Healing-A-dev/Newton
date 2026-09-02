@@ -51,13 +51,10 @@ proc optimize*(node: AstNode): AstNode =
   of nkVarRef:
     return node
 
-  # --- THE MAGIC HAPPENS HERE ---
   of nkBinaryOp:
-    # 1. First, recursively optimize the left and right sides
     node.left = optimize(node.left)
     node.right = optimize(node.right)
 
-    # 2. Check if BOTH sides are numeric literals
     if node.left.kind == nkLiteral and node.right.kind == nkLiteral and
        not node.left.isString and not node.right.isString:
 
@@ -73,13 +70,11 @@ proc optimize*(node: AstNode): AstNode =
            of "/":
              if rval == 0.0: return node # Prevent division by zero at compile time
              res = lval / rval
-           else: return node # Unhandled operator, leave it alone
+           else: return node
 
-         # 3. Format the result back into a string
          let isInt = (res == res.round())
          let resStr = if isInt: $(res.toInt()) else: $res
 
-         # 4. MUTATE THE AST: Replace the binary op with a single literal!
          return AstNode(
            kind: nkLiteral,
            strVal: resStr,
@@ -87,10 +82,9 @@ proc optimize*(node: AstNode): AstNode =
            line: node.line
          )
        except:
-         return node # If parsing fails, just return the original node
+         return node
 
     return node
 
-  # For nodes we don't need to optimize (like variables and base literals)
   else:
     return node

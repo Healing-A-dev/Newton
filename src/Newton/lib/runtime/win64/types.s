@@ -549,3 +549,45 @@ F_alloc_array:
     mov %rax, %r8; movq $3, 0(%r8); pop %rcx; mov %rcx, 8(%r8)
     lea 16(%r8), %rdi; mov %rcx, %rbx; mov %rbx, %rcx; mov $1, %rax; cld; rep stosq
     lea 8(%r8), %rax; leave; ret
+
+.global alloc_flat_array
+alloc_flat_array:
+    push %rbp; mov %rsp, %rbp
+    push %rbx; push %r12
+
+    # Windows requires preserving %rdi if we use it!
+    push %rdi
+
+    # Allocate 40 bytes of Shadow Space (32 shadow + 8 to re-align stack to 16 bytes)
+    sub $40, %rsp
+
+    mov %rcx, %rbx       # %rcx holds the TAGGED count in Windows
+    sar $1, %rbx         # SAFE HARDWARE UNTAG
+
+    # Calculate bytes: (count * 8) + 16 bytes for headers
+    mov %rbx, %rcx       # Arg 1 for _malloc
+    shl $3, %rcx
+    add $16, %rcx
+    call _malloc
+
+    mov %rax, %r12       # Save base memory pointer to %r12
+
+    # Initialize headers
+    movq $3, 0(%r12)     # Offset 0: Type = 3 (Array)
+    mov %rbx, 8(%r12)    # Offset 8: True Length (2500)
+
+    # Zero-fill the buffer with Newton's Tagged 0
+    lea 16(%r12), %rdi   # %rdi is mandatory for rep stosq
+    mov %rbx, %rcx       # %rcx is the mandatory count for rep
+    mov $1, %rax
+    cld
+    rep stosq
+
+    # Return pointer to the Length field
+    lea 8(%r12), %rax
+
+    # Cleanup shadow space and restored registers
+    add $40, %rsp
+    pop %rdi
+    pop %r12; pop %rbx
+    leave; ret

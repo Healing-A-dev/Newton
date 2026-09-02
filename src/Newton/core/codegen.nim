@@ -176,9 +176,15 @@ proc gen(c: Compiler, node: AstNode): string =
 
         registerAstFunctions(node.stmts)
 
-        for stmt in node.stmts:
-          if stmt.kind == nkFunction:
-            discard c.gen(stmt)
+        proc extractFunctions(stmtsList: seq[AstNode]) =
+            for s in stmtsList:
+                if s.kind == nkFunction:
+                    if not s.isPrecompiled:
+                        discard c.gen(s)
+                elif s.kind == nkBlock:
+                    extractFunctions(s.blockStmts)
+
+        extractFunctions(node.stmts)
 
         c.emitLabel(mainLabel)
 
@@ -631,8 +637,9 @@ proc gen(c: Compiler, node: AstNode): string =
       let indexNode = node.callArgs[0]
       let indexLoc = c.gen(indexNode)
       let dest = c.allocTemp()
-      c.emit("03", dest, "0", "00")
-      c.emit("2C", indexLoc, dest, "00")
+      c.emit("40", "%rdi", indexLoc, "00")
+      c.emit("1B", "sys_argv", "0", "00")
+      c.emit("40", dest, "%rax", "00")
       return dest
 
     if node.callName == "sys_argc":
@@ -911,6 +918,7 @@ proc gen(c: Compiler, node: AstNode): string =
     return ""
 
   of nkFunction:
+    if c.inFunction: return
     let skipLabel = c.newLabel()
     c.emit("0B", "[$#]" % skipLabel, "00", "00")
 
@@ -1025,11 +1033,8 @@ proc gen(c: Compiler, node: AstNode): string =
     c.emit("1B", "newton_fclose", "0", "00")
     return ""
 
-  # --- 2. THE ORIGINAL COLLECTION ITERATOR ---
   of nkForeachMap:
     let targetLoc = c.gen(node.mapLoopTarget)
-
-    # Get the length of the Array/Map using our new universal sizeof
     let lenReg = c.allocTemp()
     c.emit("40", "%rdi", targetLoc, "00")
     c.emit("1B", "newton_sizeof", "0", "00")
@@ -1072,7 +1077,7 @@ proc gen(c: Compiler, node: AstNode): string =
     # Execute Block
     discard c.gen(node.mapLoopBody)
 
-    # Increment index natively
+    # Increment index
     c.emit("40", "%rdi", idxReg, "00")
     c.emit("1B", "newton_inc", "0", "00")
     c.emit("40", idxReg, "%rax", "00")
@@ -1127,7 +1132,6 @@ proc gen(c: Compiler, node: AstNode): string =
     c.emit("40", dest, "%rax", "00")
     return dest
 
-  # --- [NEW] DESTRUCTURING ---
   of nkDestructDecl:
     let valLoc = c.gen(node.destructVal)
     let destMap = c.allocTemp()

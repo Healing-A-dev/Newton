@@ -1,9 +1,25 @@
 
 --- SECTION: FIXES/FIXED ---
-Fix   -> 'int' keyword no longer working on floats
-Fix   -> Collection.ToMap function incorrectly converting to maps (converts backwords) ha -> ('a', 'h')
-Fixed -> Collection.ToList incorrectly converting maps to list (does not reverse order)
+- Fix   -> Math.Random causes segmentation fault [PATH = src/Newton/lib/runtime/linux64/math.s; FUNCTION = runtime_random]
+- Fix   -> for loop only supporting incrementation and not decrementation
+- Fix   -> foreach loop only working for named maps '(key: value)'
+- Fix   -> foreach key, value pairs returning 0 (Only happens when map has been passed through several values (or memory mismatching). The values still exsist (and are accessable), they just arent printed)
++ FIXED -> OS.Execute not using current user environment (defaults to /bin/sh)
++ FIXED -> Collection.ToMap function incorrectly converting to maps (converts backwords) ha -> ('a', 'h')
++ FIXED -> Collection.ToList incorrectly converting maps to list (does not reverse order)
++ FIXED -> 'int' keyword no longer working on floats
 
 --- SECTION: ADD/ADDED FEATURES ---
 Add   -> Recursive collection data calling for the print functions (printing a map/list within a map/list without storing the inner list)
+	* Reuired Fix [foreach loop only working for named maps]
+	* Reuired Fix [foreach key, value paris returning 0]
 Add   -> Standard Library Documentation***
+Add   -> Block code to 'match' statement.
+  * EX:
+    match $name:
+      "Sara" ->
+          code...
+          more_code...
+      "Bob" -> do thing
+      default -> Default case
+    end

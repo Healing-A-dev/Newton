@@ -154,7 +154,7 @@ To prevent runtime crashes, Newton's standard library avoids throwing exceptions
 
 ```asm
 fun main:
-    set file_result: File.Std_ReadEntireFile "config.txt"
+    set file_result: @capture File.Std_ReadEntireFile "config.txt"
     
     if $file_result{0} == "error":
         println "Failed to read file: {}", $file_result{1}

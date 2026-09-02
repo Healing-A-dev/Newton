@@ -1,0 +1,139 @@
+; Filename: Math.nt
+; Description: Math module for the newton standard library
+; Date: April 30th, 2026 *
+
+
+; ------------------------------------- ;
+;         MATHEMATICAL CONSTANTS        ;
+; ------------------------------------- ;
+
+set PI*: 3.1415926353
+
+; ------------------------------------- ;
+;         MATHEMATICAL FUNCTIONS        ;
+; ------------------------------------- ;
+
+; Absolute Value
+fun Abs: @args n
+    if $n < 0:
+        return 0 - $n
+    end
+    return $n
+end
+
+
+; Minimum
+fun Min: @args a, b
+    if $a < $b:
+        return $a
+    else:
+        return $b
+    end
+end
+
+
+; Maximum
+fun Max: @args a, b
+    if $a > $b:
+        return $a
+    else:
+        return $b
+    end
+end
+
+
+; Naive exponent (will be optimized later)
+fun Pow: @args base, exp
+
+    set result: 1
+    set i: 0
+
+    while $i < $exp:
+        result: $result * $base
+        i: $i + 1
+    end
+
+    return $result
+end
+
+
+; Modulo
+fun Mod: @args a, b
+    set r: $a - $b
+    while $r >= $b:
+        r: $r - $b
+    end
+    return $r
+end
+
+
+; Round
+fun Round: @args n
+	if $n >= 0.0:
+		set res: $n + 0.5
+		return (int $res)
+	else:
+		set res: $n - 0.5
+		return (int $res)
+	end
+end
+
+
+; Square Root
+fun Sqrt: @args n
+	if $n <= 1:
+		return $n
+	end
+
+	set n_current: 1
+	for &iteration, 0, 1000, 1:
+		set n_next: 0.5 * ($n_current + $n / $n_current)
+		n_current: $n_next
+	end
+	return $n_current
+end
+
+; Random
+fun Random: @args max
+    return __math_random $max
+end
+
+
+; Sine
+fun Sin: @args x
+    ; Calculate powers
+    set x2: $x * $x
+    set x3: $x2 * $x
+    set x5: $x3 * $x2
+    set x7: $x5 * $x2
+
+    ; Calculate terms using hardcoded factorials (3! = 6, 5! = 120, etc)
+    set term1: $x
+    set term2: $x3 / 6.0
+    set term3: $x5 / 120.0
+    set term4: $x7 / 5040.0
+
+    return $term1 - $term2 + $term3 - $term4
+end
+
+; Cosine
+fun Cos: @args x
+    ; Calculate powers
+    set x2: $x * $x
+    set x4: $x2 * $x2
+    set x6: $x4 * $x2
+
+    ; Calculate terms (2! = 2, 4! = 24, 6! = 720)
+    set term1: 1.0
+    set term2: $x2 / 2.0
+    set term3: $x4 / 24.0
+    set term4: $x6 / 720.0
+
+    return $term1 - $term2 + $term3 - $term4
+end
+
+
+;; Bitwise Operations
+fun Xor: @args base, x
+	return __math_xor $base, $x
+end

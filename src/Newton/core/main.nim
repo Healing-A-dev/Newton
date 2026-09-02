@@ -2,7 +2,9 @@ import strutils, os, osproc, streams
 import lexer, parser, codegen, ast, cli, errors, optimizer
 
 var ERRNO: int = 0
-var SCRIPT_PATH: string = "/usr/local/lib/newton/bin/newton@core__script.component"
+let SCRIPT_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "bin" / "newton@core__script.component"
+let NEWTON_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.o"
+let NEWTON_WIN_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.a"
 
 proc parseOpcode(op: string): uint8 =
   var val = 0
@@ -97,14 +99,14 @@ when isMainModule:
       if data.TargetOS[3..^1] != hostOS and data.TargetOS != hostOS:
         case data.TargetOS[3..^1]
         of "win64":
-          ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:/usr/local/lib/newton/lib/libnewton.a " & data.LinkerFiles.join(" ") & " " & data.Verbose & " "  & data.TargetOS & " " & data.ObjectOutput)
+          ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:" & NEWTON_WIN_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.Verbose & " "  & data.TargetOS & " " & data.ObjectOutput)
         of "darwin":
           echo "TODO: IMPLEMENT DARWIN (MACOS) SUPPORT"
           discard
         else:
           ERR("Unsupported platform <\e[1;31m" & data.TargetOS[3..^1] & "\e[0m\e[1m>", 0, "", "Supported platforms linux|win64|darwin")
       else:
-        ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:/usr/local/lib/newton/lib/libnewton.o " & data.LinkerFiles.join(" ") & " " & data.Verbose & " " & data.ObjectOutput)
+        ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:" & NEWTON_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.Verbose & " " & data.ObjectOutput)
   else:
     echo "Genereated bytecode file <\e[96m" & data.Output & ".gvt\e[0m>"
 

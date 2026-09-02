@@ -138,33 +138,28 @@ sys_write_bytes:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13; push %r14
 
-    # 1. Untag File Descriptor
     sar $1, %rdi
     mov %rdi, %r12
 
-    # 2. Check if Array is valid
     test %rsi, %rsi; jz .Lwb_done
     mov %rsi, %rax; and $1, %rax; jnz .Lwb_done
     mov -8(%rsi), %rax; cmp $3, %rax; jne .Lwb_done
 
-    # 3. Read Array Length and Buffer Pointer
     mov 0(%rsi), %r13    # True Length
     test %r13, %r13; jz .Lwb_done
     lea 8(%rsi), %r14    # Elements Buffer
 
-    # 4. Allocate temporary raw byte buffer
     mov %r13, %rdi
     call _malloc
     mov %rax, %rbx
 
-    # 5. Extract bytes from Array
     xor %rcx, %rcx
 .Lwb_loop:
     cmp %rcx, %r13
     je .Lwb_do_write
     mov (%r14, %rcx, 8), %rax
-    sar $1, %rax         # Untag Newton Integer!
-    movb %al, (%rbx, %rcx) # Store just the lowest 8 bits
+    sar $1, %rax
+    movb %al, (%rbx, %rcx)
     inc %rcx
     jmp .Lwb_loop
 
@@ -175,7 +170,6 @@ sys_write_bytes:
     mov %r13, %rdx       # Length
     syscall
 
-    # 6. Free the buffer
     mov %rbx, %rdi
     call _free
 

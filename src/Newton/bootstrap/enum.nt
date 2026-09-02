@@ -1,4 +1,4 @@
-| Simple Iota function
+; Simple Iota function
 set __IOTA__*: -1
 fun iota:
 	enum.__IOTA__: $enum.__IOTA__ + 1
@@ -10,7 +10,7 @@ fun zero:
   return [@ok, 1]
 end
 
-| Lexer Tokens
+; Lexer Tokens
 set tokEof*:         enum.iota
 set tokEol*:         enum.iota
 set tokIdentifier*:  enum.iota
@@ -69,10 +69,10 @@ set tokArrow*:       enum.iota
 set tokIn*:          enum.iota
 set tokExposed*:     enum.iota
 
-| Restting IOTA
+; Restting IOTA
 set __reset__:       enum.zero
 
-| Astnode
+; Astnode
 set nkProgram*:       enum.iota
 set nkFunction*:      enum.iota
 set nkReturn*:        enum.iota

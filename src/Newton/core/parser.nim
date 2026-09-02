@@ -61,15 +61,17 @@ proc resolveModulePath(pathParts: seq[string]): string =
   if fileExists(exeDir / relativePath): return exeDir / relativePath
   if fileExists(exeDir / "lib" / relativePath): return exeDir / "lib" / relativePath
 
-  let globalPath = "/usr/local/lib/newton" / relativePath
-  if fileExists(globalPath): return globalPath
-  if fileExists("/usr/local/lib/newton/lib" / relativePath): return "/usr/local/lib/newton/lib" / relativePath
+  let userLocalPath = getHomeDir() / ".local" / "lib" / "newton"
+  if fileExists(userLocalPath / relativePath): return userLocalPath / relativePath
+  if fileExists(userLocalPath / "lib" / relativePath): return userLocalPath / "lib" / relativePath
+
+  let globalPath = "/usr/local/lib/newton"
+  if fileExists(globalPath / relativePath): return globalPath / relativePath
+  if fileExists(globalPath / "lib" / relativePath): return globalPath / "lib" / relativePath
 
   return ""
 
 # --- Expression Parsing ---
-
-# 1. Primary
 proc parsePrimary(p: Parser): AstNode =
   let t = p.peek()
   case t.kind
@@ -276,7 +278,6 @@ proc parsePrimary(p: Parser): AstNode =
   else:
     ERR("Unexpected token in expression: " & $t.kind, t.line)
 
-# 2. Factor
 proc parseFactor(p: Parser): AstNode =
   var left = p.parsePrimary()
   while p.peek().kind in {tokStar, tokSlash, tokMod}:
@@ -285,7 +286,6 @@ proc parseFactor(p: Parser): AstNode =
     left = AstNode(kind: nkBinaryOp, left: left, right: right, op: op)
   return left
 
-# 3. Term
 proc parseTerm(p: Parser): AstNode =
   var left = p.parseFactor()
   while p.peek().kind in {tokPlus, tokMinus, tokConcat, tokBitXor, tokShr, tokShl}:
@@ -297,7 +297,6 @@ proc parseTerm(p: Parser): AstNode =
        left = AstNode(kind: nkBinaryOp, left: left, right: right, op: opToken.lexeme)
   return left
 
-# 4. Comparison
 proc parseComparison(p: Parser): AstNode =
   var left = p.parseTerm()
   while p.peek().kind in {tokLt, tokGt, tokEqEq, tokNeq, tokGe, tokLe}:
@@ -306,7 +305,6 @@ proc parseComparison(p: Parser): AstNode =
     left = AstNode(kind: nkBinaryOp, left: left, right: right, op: op)
   return left
 
-# 5. Logic AND
 proc parseLogicAnd(p: Parser): AstNode =
   var left = p.parseComparison()
   while p.match(tokAnd):
@@ -314,7 +312,6 @@ proc parseLogicAnd(p: Parser): AstNode =
     left = AstNode(kind: nkBinaryOp, left: left, right: right, op: "and")
   return left
 
-# 6. Logic OR
 proc parseLogicOr(p: Parser): AstNode =
   var left = p.parseLogicAnd()
   while p.match(tokOr):
@@ -322,12 +319,10 @@ proc parseLogicOr(p: Parser): AstNode =
     left = AstNode(kind: nkBinaryOp, left: left, right: right, op: "or")
   return left
 
-# 7. Entry Point
 proc parseExpression(p: Parser): AstNode =
   return parseLogicOr(p)
 
 # --- Statement Parsing ---
-
 proc parseBlock(p: Parser): AstNode =
   var stmts: seq[AstNode] = @[]
   while p.peek().kind == tokEol: discard p.advance()
@@ -371,11 +366,12 @@ proc parseImport(p: Parser): seq[AstNode] =
     let moduleAst = subParser.parseProgram()
 
     prefixAst(moduleAst.stmts, moduleName)
+    let isCompiledPackage = filename.contains("packages" & $DirSep)
     for n in moduleAst.stmts:
         n.fromImport = true
+        n.isPrecompiled = isCompiledPackage
 
     currentCompilingFile = oldFile
-
     return moduleAst.stmts
 
 proc parseStatement(p: Parser): AstNode =
@@ -389,7 +385,7 @@ proc parseStatement(p: Parser): AstNode =
   of tokSet:
     discard p.advance()
 
-    # 1. DESTRUCTURING: set [a, b]: [1, 2]
+    # DESTRUCTURING: set [a, b]: [1, 2]
     if p.peek().kind == tokLBracket:
       discard p.advance()
       var names: seq[string] = @[]
@@ -401,15 +397,12 @@ proc parseStatement(p: Parser): AstNode =
       let val = p.parseExpression()
       return AstNode(kind: nkDestructDecl, destructNames: names, destructVal: val, line: t.line)
 
-    # 2. STANDARD ASSIGNMENT: set a: 1  OR  set a*: 1
+    # STANDARD ASSIGNMENT: set a: 1  OR  set a*: 1
     else:
       let name = p.consume(tokIdentifier, "Expected variable name").lexeme
-
-      # --- [RESTORED] Global Export Check ---
       var isGlobal = false
       if p.match(tokStar):
           isGlobal = true
-      # --------------------------------------
 
       discard p.consume(tokColon, "Expected ':' after variable name")
       let val = p.parseExpression()
@@ -518,7 +511,6 @@ proc parseStatement(p: Parser): AstNode =
         if p.peek().kind == tokEol: discard p.advance()
     let body = p.parseBlock()
     discard p.consume(tokEnd, "end")
-    # Notice the new isExposed: true flag!
     return AstNode(kind: nkFunction, fnName: name, fnBody: body, fnArgs: args, fnExpo: true)
 
   of tokFn:
@@ -574,14 +566,10 @@ proc parseStatement(p: Parser): AstNode =
 
   of tokForeach:
     discard p.advance() # Consume 'foreach'
-
-    # 1. Consume the shared prefix (&variable)
     discard p.consume(tokAmpersand, "Expected '&' before loop variable")
     let firstVarName = p.consume(tokIdentifier, "Expected variable name").lexeme
 
-    # 2. Branch based on the NEXT token
     if p.peek().kind == tokComma:
-      # --- BRANCH 1: MAP/ARRAY ITERATOR ---
       discard p.advance() # Consume ','
       discard p.consume(tokAmpersand, "Expected '&' before value variable")
       let valName = p.consume(tokIdentifier, "Expected value variable name").lexeme
@@ -597,12 +585,10 @@ proc parseStatement(p: Parser): AstNode =
         while p.peek().kind == tokEol: discard p.advance()
       discard p.consume(tokEnd, "Expected 'end'")
 
-      # [!] NOTE: Be sure to use the correct nkBlock field name you found earlier! (e.g., stmts, body, etc.)
       let bodyBlock = AstNode(kind: nkBlock, blockStmts: bodyStmts)
       return AstNode(kind: nkForeachMap, mapLoopKey: firstVarName, mapLoopVal: valName, mapLoopTarget: target, mapLoopBody: bodyBlock, line: t.line)
 
     elif p.peek().kind == tokIn:
-      # --- BRANCH 2: FILE STREAMER ---
       discard p.advance() # Consume 'in'
       let target = p.parseExpression()
       discard p.consume(tokColon, "Expected ':' after foreach declaration")
@@ -615,12 +601,10 @@ proc parseStatement(p: Parser): AstNode =
         while p.peek().kind == tokEol: discard p.advance()
       discard p.consume(tokEnd, "Expected 'end'")
 
-      # [!] NOTE: Be sure to use the correct nkBlock field name here too!
       let bodyBlock = AstNode(kind: nkBlock, blockStmts: bodyStmts)
       return AstNode(kind: nkForeachFile, fileLoopVar: firstVarName, fileLoopTarget: target, fileLoopBody: bodyBlock, line: t.line)
 
     else:
-      # Safety Net!
       discard p.consume(tokIn, "Expected 'in' or ',' after foreach loop variable")
 
   of tokStringLit, tokNumberLit, tokFloatLit, tokLParen, tokLBracket, tokMinus, tokNot, tokDollar, tokAmpersand, tokInput, tokCall, tokMacroRef:
@@ -629,7 +613,7 @@ proc parseStatement(p: Parser): AstNode =
     ERR("Unknown statement: " & $t.kind, t.line)
 
 proc injectPrelude*(stmts: var seq[AstNode]) =
-  let pathParts = @["Std", "Base"]
+  let pathParts = @["std", "Base"]
   let filename = resolveModulePath(pathParts)
   if filename == "": return
   if globalImportedModules.hasKey(filename): return

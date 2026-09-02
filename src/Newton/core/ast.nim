@@ -17,6 +17,7 @@ type
     line*: int
     autoUnwrap*: bool
     fromImport*: bool
+    isPrecompiled*: bool
     case kind*: AstNodeKind
     of nkProgram: stmts*: seq[AstNode]
     of nkBlock: blockStmts*: seq[AstNode]

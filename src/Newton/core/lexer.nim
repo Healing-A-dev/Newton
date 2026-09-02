@@ -145,7 +145,7 @@ proc lex*(input: string): seq[Token] =
         while current < input.len and input[current] != '"':
             if input[current] == '\\' and current + 1 < input.len:
                 strVal.add(input[current])
-                current.inc               
+                current.inc
                 strVal.add(input[current])
             else:
                 strVal.add(input[current])
@@ -159,7 +159,6 @@ proc lex*(input: string): seq[Token] =
 
     else:
       if c.isDigit:
-        # 1. Scan the integer part
         while current < input.len and input[current].isDigit:
           current.inc
         if current < input.len and input[current] == '.':

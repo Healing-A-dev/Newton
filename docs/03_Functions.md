@@ -11,7 +11,7 @@ To define parameters, use the `@args` macro immediately after the function decla
 ```asm
 
 
-fun greet_user: @args name, role
+fun greetUser: @args name, role
     @println "Welcome back, {}! Your role is: {}", $name, $role
 end
 
@@ -38,7 +38,7 @@ By default, any variable declared inside a function (using `set`) is strictly sc
 If you need to define an empty function or an empty `if` block (for example, while scaffolding a project), you can leave it entirely blank. Optionally, you can use the `pass` function provided by the standard library.
 
 ```asm
-fun future_feature:
+fun futureFeature:
 end
 
 fun main:
@@ -69,7 +69,7 @@ fun countdown: @args n
 
     ; Because this is the very last operation, the Newton compiler
     ; optimizes it into a flat jump. No stack frames are consumed!
-    return countdown ($n - 1)
+    return countdown $n - 1
 end
 
 fun main:

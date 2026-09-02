@@ -1,0 +1,288 @@
+; Filname: Collection.nt
+; Description: Collection module for Newton's standard library
+; Date: April 30th, 2026 *
+
+; Remove the given index/key [list, map]
+fun Std_Remove: @args map, key
+    return ["ok", (__sys_collection_delete $map, $key)]
+end
+
+; Inversts the given map
+fun Invert: @args map_list
+	set __temp_map__: ()
+	foreach &key, &value, $map_list:
+		__temp_map__{$value}: $key
+	end
+	return $__temp_map__
+end
+
+; Returns weather or not a map has the given key
+; NOTE: buggy -> if $key == 0 it will still return false
+fun HasKey: @args map_list, key
+    set type_val: typeof $map_list
+    if $type_val == "map":
+        set val: $map_list{$key}
+        if $val == 0:
+            return ["ok", 0]
+        else:
+            return ["ok", 1]
+        end
+    else:
+        return ["error", "Failed type check"]
+    end
+end
+
+; Append a value to the end of a map/list
+fun Std_Push: @args map_val, value
+	set map_type: typeof $map_val
+    if $map_type == "map":
+    	set map_len: sizeof $map_val
+    	map_val{$map_len}: $value
+    	return ["ok", $map_val]
+
+    elseif $map_type == "list":
+    	set map_len: sizeof $map_val
+    	map_val{$map_len}: $value
+    	return ["ok", $map_val]
+
+    else:
+    	return ["error", "Collection.push ; Expected type `map;list` got `" << $map_type << "`"]
+    end
+end
+
+; Remove the last value of a map/list
+fun Std_Pop: @args map_list
+	if (typeof $map_list) == "map":
+		foreach &_null, &item, $map_list:
+			__sys_collection_delete $map_list, $_null
+			return ["ok", $item]
+		end
+
+	elseif (typeof $map_list) == "list":
+		set last_item: $map_list{(sizeof $map_list) - 1}
+		__sys_collection_delete $map_list, ((sizeof $map_list) - 1)
+		return ["ok", $last_item]
+
+	else:
+		return ["error", "Collection.pop ; Expected type `map;list` got `" << (typeof $map_list) << "`"]
+	end
+	return ["ok", 0]
+end
+
+; Combines the given collection into a string with the given seperator
+fun Join: @args map_list, sep
+	set out_string: ""
+	set length: sizeof $map_list
+
+	if (typeof $map_list) == "map":
+		set counter: 0
+		foreach &_null, &item, $map_list:
+			out_string: $out_string << $item
+			if $counter < $length:
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return ["ok", $out_string]
+
+	elseif (typeof $map_list) == "list":
+		set counter: 0
+		while $counter < $length:
+			out_string: $out_string << $map_list{$counter}
+			if $counter < ($length - 1):
+				out_string: $out_string << $sep
+			end
+			counter: $counter + 1
+		end
+		return ["ok", $out_string]
+	else:
+		return ["error", "Collection.join ; Expected type `map;list` got `" << (typeof $map_list) << "`"]
+	end
+	return ["ok", 0]
+end
+
+; Fill from index 0 -> count [exclusive] with the given value
+fun Fill: @args map_list, value, count
+	for &idx, 0, $count, 1:
+		map_list{$idx}: $value
+	end
+	return [@ok, $map_list]
+end
+
+; Returns the minimum value in a collection of integers/floats
+fun Min: @args map_list
+	set min: 0
+	if (typeof $map_list) == "list":
+		set [l, r]: [0, (sizeof $map_list) - 1]
+		while $l < $r and $r - $l > 1:
+			if $map_list{$l} < $min and $map_list{$l} < $r:
+				min: $map_list{$l}
+			elseif $map_list{$r} < $min and $map_list{$r} < $l:
+				min: $map_list{$r}
+			elseif $map_list{$l} == $map_list{$r} and $map_list{$l} < $min:
+				min: $map_list{$l}
+			end
+			l: $l + 1
+			r: $r - 1
+		end
+		return ["ok", $min]
+	else:
+		foreach &null, &val, $map_list:
+			if $val < $min:
+				min: $val
+			end
+		end
+		return ["ok", $min]
+	end
+end
+
+; Returns the maximum value in a collection of integers/floats
+fun Max: @args map_list
+	set max: 0
+	if (typeof $map_list) == "list":
+		set [l, r]: [0, (sizeof $map_list) - 1]
+		while $l < $r and $r - $l > 1:
+			if $map_list{$l} > $max and $map_list{$l} > $r:
+				max: $map_list{$l}
+			elseif $map_list{$r} > $max and $map_list{$r} > $l:
+				max: $map_list{$r}
+			elseif $map_list{$l} == $map_list{$r} and $map_list{$l} > $max:
+				max: $map_list{$l}
+			end
+			l: $l + 1
+			r: $r - 1
+		end
+		return ["ok", $max]
+	else:
+		foreach &null, &val, $map_list:
+			if $val > $max:
+				max: $val
+			end
+		end
+		return ["ok", $max]
+	end
+end
+
+; Combines to list in a key:value map
+fun Zip: @args list1, list2
+	set output: ()
+	set length: 0
+
+	set size1: sizeof $list1
+	set size2: sizeof $list2
+
+	if $size1 < $size2 or $size1 == $size2:
+		length: $size1
+	else:
+		length: $size2
+	end
+
+	for &idx, 0, $length, 1:
+		output{$list1{$idx}}: $list2{$idx}
+	end
+	return ["ok", $output]
+end
+
+; Returns
+fun Duplicates: @args map_list
+	set seen: ()
+	set duplicate_idx: []
+	set duplicate_val: []
+	if (typeof $map_list) == "list":
+		set [l, r]: [0, (sizeof $map_list) - 1]
+		while $l < $r and $r - $l > 1:
+			if $seen{$map_list{$l}} == 0:
+				seen{$map_list{$l}}: 1
+			else:
+				push $duplicate_idx, $l
+				push $duplicate_val, $map_list{$l}
+			end
+			if $seen{$map_list{$r}} == 0:
+				seen{$map_list{$r}}: 1
+			else:
+				push $duplicate_idx, $r
+				push $duplicate_val, $map_list{$r}
+			end
+			l: $l + 1
+			r: $r - 1
+		end
+
+		; Combine duplicate idx & duplicate values
+		set result: (hasDuplicates: ((sizeof $duplicate_idx) > 1), duplicates: $duplicate_val, "indexOfDuplicates": $duplicate_idx)
+		return $result
+	else:
+		foreach &idx, &val, $map_list:
+			if $seen{$val} == 0:
+				seen{$val}: 1
+			else:
+				push $duplicate_idx, $idx
+				push $duplicate_val, $val
+			end
+		end
+		set result: (hasDuplicates: ((sizeof $duplicate_idx) > 1), duplicates: $duplicate_val, "indexOfDuplicates": $duplicate_idx)
+		return $result
+	end
+end
+
+; Converts the given value into a map
+fun Std_ToMap: @args val
+	set val_type: typeof $val
+	set result: ()
+
+	if $val_type == "string":
+		set count: sizeof $val
+		while $count > 0 :
+		  result{$count - 1}: substring $val, $count - 1, 1
+			count: $count - 1
+		end
+	elseif $val_type == "list":
+		for &loc, 0, (sizeof $val), 1:
+			result{$loc}: $val{$loc}
+		end
+	elseif $val_type == "map":
+		result: $val
+	else:
+		return ["error", "Collection.toMap ; Expected type `map;list;string` got `" << $val_type << "`"]
+	end
+	return $result
+end
+
+; Converts the given value into a map
+fun Std_ToList: @args val
+	set val_type: typeof $val
+	set result: []
+
+	if $val_type == "string":
+		while (sizeof $result) < (sizeof $val):
+			result{(sizeof $result)}: substring $val, (sizeof $result), 1
+		end
+	elseif $val_type == "map":
+		; Initial Conversion Loop
+		set __temp__: []
+		foreach &_null, &value, $val:
+			__temp__{(sizeof $__temp__)}: $value
+		end
+
+		; Reversal Loop
+		; [Since maps are iterated backwards, that order of values must be reversed to be equal once in a list]
+		set idx: (sizeof $__temp__) - 1
+		while $idx >= 0:
+			result{(sizeof $result)}: $__temp__{$idx}
+			idx: $idx - 1
+		end
+	elseif $val_type == "list":
+		result: $val
+	else:
+		return ["error", "Collection.toList ; Expected type `map;list;string` got `" << $val_type << "`"]
+	end
+	return ["ok", $result]
+end
+
+
+; --- WORK IN PROGRESS SECTION --- ;
+
+; Allocate an array with a base size
+fun Std_MallocArray: @args size
+	set arr: __alloc_array $size
+	return [@ok, $arr]
+end

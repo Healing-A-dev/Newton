@@ -24,6 +24,7 @@
 
 .section .rodata
     .Lcmd_prefix: .asciz "cmd.exe /c "
+ 	.Lempty_string: .string ""
 
 .section .text
 
@@ -189,3 +190,39 @@ sys_exec:
     lea -32(%rbp), %rsp
     pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
+.global sys_argv
+sys_argv:
+    push %rbp
+    mov %rsp, %rbp
+
+    # Allocate 32 bytes of Windows Shadow Space
+    sub $32, %rsp
+
+    # 1. Untag the Newton Integer (Windows Arg 1 is RCX)
+    mov %rcx, %rax
+    shr $1, %rax
+
+    # 2. Skip the executable name (argv[0]) by incrementing the index
+    inc %rax
+
+    # 3. Prevent Out-of-Bounds Segfaults
+    mov __argc(%rip), %r8
+    cmp %r8, %rax
+    jge .Largv_out_of_bounds
+
+    # 4. Fetch argv[index + 1]
+    mov __sys_argv(%rip), %rdx
+    mov (%rdx, %rax, 8), %rcx  # Set Arg 1 (%rcx) for string_new call
+
+    # 5. Convert C-String to Newton String
+    call string_new
+    add $32, %rsp
+    leave
+    ret
+
+.Largv_out_of_bounds:
+    lea .Lempty_string(%rip), %rcx  # Set Arg 1 (%rcx) for string_new call
+    call string_new
+    add $32, %rsp
+    leave
+    ret

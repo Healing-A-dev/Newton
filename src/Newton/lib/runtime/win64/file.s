@@ -3,6 +3,7 @@
 .extern ReadFile
 .extern CloseHandle
 .extern _malloc
+.extern _write
 
 .section .bss
 .align 8
@@ -163,4 +164,67 @@ newton_getline:
     lea -16(%rbp), %rsp
     pop %r13
     pop %r12
+    leave; ret
+
+.global sys_write_bytes
+.extern WriteFile
+
+sys_write_bytes:
+    push %rbp; mov %rsp, %rbp
+    push %rbx; push %r12; push %r13; push %r14
+
+    # Allocate 48 bytes of Windows Stack Space
+    # (32 shadow + 8 for Arg 5 + 8 for lpNumberOfBytesWritten)
+    sub $48, %rsp
+    and $-16, %rsp       # Ensure strict 16-byte alignment
+
+    # 1. Untag File Descriptor (Arg 1 is now %rcx)
+    sar $1, %rcx
+    mov %rcx, %r12       # R12 now holds the Windows HANDLE
+
+    # 2. Check if Array is valid (Arg 2 is now %rdx)
+    test %rdx, %rdx; jz .Lwb_done
+    mov %rdx, %rax; and $1, %rax; jnz .Lwb_done
+    mov -8(%rdx), %rax; cmp $3, %rax; jne .Lwb_done
+
+    # 3. Read Array Length and Buffer Pointer
+    mov 0(%rdx), %r13    # True Length
+    test %r13, %r13; jz .Lwb_done
+    lea 8(%rdx), %r14    # Elements Buffer
+
+    # 4. Allocate temporary raw byte buffer
+    mov %r13, %rcx       # Windows Arg 1: count
+    call _malloc
+    mov %rax, %rbx
+
+    # 5. Extract bytes from Array
+    xor %rcx, %rcx       # Using %rcx as our loop counter
+.Lwb_loop:
+    cmp %rcx, %r13
+    je .Lwb_do_write
+    mov (%r14, %rcx, 8), %rax
+    sar $1, %rax         # Untag Newton Integer!
+    movb %al, (%rbx, %rcx) # Store just the lowest 8 bits
+    inc %rcx
+    jmp .Lwb_loop
+
+.Lwb_do_write:
+    # 6. Call Windows WriteFile(hFile, lpBuffer, nBytesToWrite, lpBytesWritten, lpOverlapped)
+    mov %r12, %rcx       # Arg 1: hFile (The HANDLE)
+    mov %rbx, %rdx       # Arg 2: lpBuffer
+    mov %r13, %r8        # Arg 3: nNumberOfBytesToWrite
+    lea 40(%rsp), %r9    # Arg 4: lpNumberOfBytesWritten (Local stack pointer)
+    movq $0, 32(%rsp)    # Arg 5: lpOverlapped = NULL
+    call WriteFile
+
+    # 7. Free the temporary byte buffer
+    mov %rbx, %rcx       # Windows Arg 1: pointer
+    call _free
+
+.Lwb_done:
+    mov $3, %rax         # Return Tagged 1 (Success)
+
+    # Safely restore the stack bypassing the 48-byte allocation
+    lea -32(%rbp), %rsp
+    pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret

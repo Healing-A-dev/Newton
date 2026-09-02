@@ -16,19 +16,19 @@ sys_newton_exit:
     mov $0, %rdi     # [OPTIONAL BUT GOOD] Return code 0 (Success)
     syscall
 
-    
+
 .global sys_argc
 sys_argc:
     push %rbp
     mov %rsp, %rbp
-    
+
     # 1. Fetch the raw integer argument count
     mov __argc(%rip), %rax
-    
+
     # 2. Convert to a Newton Tagged Integer: (val << 1) | 1
     shl $1, %rax
     or $1, %rax
-    
+
     leave
     ret
 
@@ -52,8 +52,14 @@ sys_exec:
     lea .Lstr_bin_sh(%rip), %rdi
     mov %rsp, %rsi
 
-    # RDX = ENVP (NULL)
-    mov $0, %rdx
+    # ==== [FIX] CALCULATE ENVP FROM __sys_argv ====
+    mov __argc(%rip), %rax
+    inc %rax                    # argv array has argc elements + 1
+    inc %rax                    # +1 to skip the NULL terminator
+    mov __sys_argv(%rip), %rcx
+    lea (%rcx, %rax, 8), %rdx   # RDX now properly points to envp!
+    # ==============================================
+
     mov $59, %rax       # sys_execve
     syscall
 
@@ -74,61 +80,61 @@ sys_getenv:
 
     test %rdi, %rdi
     jz .Lenv_not_found
-    
+
     mov %rdi, %rax
     and $1, %rax
     jnz .Lenv_not_found
 
     mov %rdi, %rbx       # RBX = Key Object
-    
+
     mov %rbx, %rdi
     call string_len
     mov %rax, %r12       # R12 = Key Length
     test %r12, %r12
-    jz .Lenv_not_found   
-    
-    mov %rbx, %r13       
+    jz .Lenv_not_found
+
+    mov %rbx, %r13
     mov -8(%rbx), %rcx
     cmp $5, %rcx
     jne .Lenv_key_ok
     mov 0(%rbx), %r13
-    
+
 .Lenv_key_ok:
     mov __sys_argv(%rip), %r14
     test %r14, %r14
     jz .Lenv_not_found
-    
+
     mov __argc(%rip), %rax
     inc %rax
     lea (%r14, %rax, 8), %r14
-    
+
 .Lenv_loop:
     mov (%r14), %rsi
-    test %rsi, %rsi 
+    test %rsi, %rsi
     jz .Lenv_not_found
-    
+
     mov %r12, %rcx
     mov %r13, %rdi
     cld
     repe cmpsb
     jne .Lenv_next
-    
+
     cmpb $'=', (%rsi)
     jne .Lenv_next
-    
+
     inc %rsi
-    
+
     mov %rsi, %rdi
     call string_new
     jmp .Lenv_done
 
 .Lenv_next:
-    add $8, %r14 
+    add $8, %r14
     jmp .Lenv_loop
-    
+
 .Lenv_not_found:
     mov $1, %rax
-    
+
 .Lenv_done:
     pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
@@ -136,24 +142,59 @@ sys_getenv:
 .global sys_time_now
 sys_time_now:
     push %rbp; mov %rsp, %rbp
-    sub $16, %rsp  
-    mov $228, %rax 
-    mov $0, %rdi   
-    mov %rsp, %rsi 
+    sub $16, %rsp
+    mov $228, %rax
+    mov $0, %rdi
+    mov %rsp, %rsi
     syscall
     mov 0(%rsp), %rax
     mov $1000, %rcx
-    mul %rcx             
-    mov %rax, %r8        
-    mov 8(%rsp), %rax    
+    mul %rcx
+    mov %rax, %r8
+    mov 8(%rsp), %rax
     mov $1000000, %rcx
-    xor %rdx, %rdx       
-    div %rcx             
-    add %r8, %rax        
+    xor %rdx, %rdx
+    div %rcx
+    add %r8, %rax
     shl $1, %rax
     or $1, %rax
 
     leave; ret
+
+ .global sys_argv
+ sys_argv:
+     push %rbp
+     mov %rsp, %rbp
+
+     # 1. Untag the Newton Integer (RDI)
+     mov %rdi, %rax
+     shr $1, %rax
+
+     # 2. Skip the executable name (argv[0]) by incrementing the index
+     inc %rax
+
+     # 3. Prevent Out-of-Bounds Segfaults
+     mov __argc(%rip), %r8
+     cmp %r8, %rax
+     jge .Largv_out_of_bounds
+
+     # 4. Fetch argv[index + 1]
+     mov __sys_argv(%rip), %rcx
+     mov (%rcx, %rax, 8), %rdi
+
+     # 5. Convert C-String to Newton String
+     call string_new
+     leave
+     ret
+
+ .Largv_out_of_bounds:
+     lea .Lempty_string(%rip), %rdi
+     call string_new
+     leave
+     ret
+
+ .section .rodata
+ .Lempty_string: .string ""
 
 .section .rodata
 .Lstr_bin_sh: .string "/bin/sh"

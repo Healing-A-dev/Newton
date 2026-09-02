@@ -1,0 +1,51 @@
+; Filename: Web.nt
+; Description: Web and Newtworking module for the newton standard librar
+; Date: April 30th, 2026 *
+
+set SOCKET*: 0
+
+fun New:
+    set fd: net_create
+    return $fd
+end
+
+fun Bind:
+    @args net, port
+    return net_bind $net, $port
+end
+
+fun Listen:
+    @args net
+    return net_listen $net
+end
+
+fun Send:
+    @args client, msg
+    return net_send $client, $msg
+end
+
+fun Accept:
+    @args port
+    return net_accept $port
+end
+
+fun Close:
+    @args client
+    net_close $client
+end
+
+fun Recieve:
+    @args client, size
+    return net_recv $client, $size
+end
+
+
+fun Connect:
+    @args fd, port,ip_int
+    return net_connect $fd, $port, $ip_int
+end
+
+fun SendFile:
+	@args client_fd, file_fd, size
+	return __net_sendfile $client_fd, $file_fd, $size
+end

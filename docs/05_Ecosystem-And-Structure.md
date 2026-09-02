@@ -7,7 +7,7 @@ Newton is more than just a compiler; it is a complete toolchain. Whether you are
 To keep the global scope clean, Newton heavily utilizes namespacing. When you import a module using the `using` keyword, you must prefix its functions with the module name.
 
 ```asm
-using Std::File
+using std::File
 
 fun main:
     ; Standard library functions require their explicit namespace

@@ -8,15 +8,15 @@ int_to_string:
     push %rbp
     mov %rsp, %rbp
     sub $32, %rsp      # Create a 32-byte local buffer on the stack
-    
+
     # 1. Untag the Newton integer
     sar $1, %rdi
     mov %rdi, %rax
-    
+
     # 2. Handle Zero explicitly
     test %rax, %rax
     jnz .Lits_nonzero
-    
+
     mov $2, %rdi       # Alloc 2 bytes ("0" + "\0")
     call _malloc
     movq $1, 0(%rax)   # Tag as Type 1 String
@@ -36,7 +36,7 @@ int_to_string:
     lea -10(%rbp), %rcx
     movb $0, (%rcx)    # Null terminator
     dec %rcx
-    
+
     mov $10, %r8
 .Lits_loop:
     test %rax, %rax
@@ -47,43 +47,43 @@ int_to_string:
     movb %dl, (%rcx)
     dec %rcx
     jmp .Lits_loop
-    
+
 .Lits_sign:
     cmpq $1, -8(%rbp)
     jne .Lits_alloc
     movb $'-', (%rcx)
     dec %rcx
-    
+
 .Lits_alloc:
     inc %rcx           # %rcx now points to the first character!
-    
+
     # 3. Calculate Exact Length
     lea -10(%rbp), %r9
     sub %rcx, %r9      # r9 = length (excluding \0)
-    
+
     # 4. Allocate Exact Heap Memory
     mov %r9, %rdi
     add $9, %rdi           # Add 1 for \0
-    
+
     push %rcx          # Preserve registers across _malloc
     push %r9
     call _malloc
     pop %r9
     pop %rcx
-    
+
     movq $1, 0(%rax)   # Tag as Type 1
     add $8, %rax       # Shift to perfectly aligned payload!
-    
+
     # 5. Copy from Stack to GC-Safe Heap Buffer
     mov %rax, %rdi
     mov %rcx, %rsi
     mov %r9, %rcx
     rep movsb
     movb $0, (%rdi)    # Null terminate securely
-    
+
     leave
     ret
-    
+
 .global float_to_string
 float_to_string:
     push %rbp
@@ -699,7 +699,7 @@ runtime_shl:
     sar $1, %rdi      # Untag Integer A
     sar $1, %rsi      # Untag Integer B
     mov %rsi, %rcx    # Shift amount MUST be placed in the %cl register
-    mov %rdi, %rax    
+    mov %rdi, %rax
     shl %cl, %rax     # Hardware Shift Left
     shl $1, %rax      # Re-tag as a Newton Integer
     or $1, %rax
@@ -709,12 +709,18 @@ runtime_shl:
 newton_to_int:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lnti_zero
-    
+
     # 1. Check String Type (Offset -8)
     mov -8(%rdi), %rcx
     cmp $1, %rcx; je .Lnti_type1
     cmp $5, %rcx; je .Lnti_type5
+    cmp $4, %rcx; je .Lnti_type4
     jmp .Lnti_zero
+
+.Lnti_type4:
+    movsd 0(%rdi), %xmm0
+    cvttsd2siq %xmm0, %rax
+    jmp .Lnti_ret
 
 .Lnti_type1:
     mov %rdi, %rsi      # Type 1: Char pointer is the string itself
@@ -726,34 +732,34 @@ newton_to_int:
 .Lnti_type5:
     mov 0(%rdi), %rsi   # Type 5: Raw char pointer is at offset 0
     mov 8(%rdi), %r8    # Type 5: Exact length is at offset 8
-    
+
 .Lnti_parse:
     xor %rax, %rax      # Result = 0
     xor %r9, %r9        # Index = 0
     xor %r10, %r10      # Sign = 0 (Positive)
     test %r8, %r8; jz .Lnti_zero
-    
+
     # Check for Negative Sign '-'
     cmpb $45, (%rsi, %r9)
     jne .Lnti_loop
     mov $1, %r10
     inc %r9
-    
+
 .Lnti_loop:
     cmp %r8, %r9; jge .Lnti_done
     movzx (%rsi, %r9), %rcx
-    
+
     # Verify character is between '0' (48) and '9' (57)
     cmp $48, %rcx; jl .Lnti_done
     cmp $57, %rcx; jg .Lnti_done
-    
+
     sub $48, %rcx       # Convert ASCII to integer
     imul $10, %rax      # Multiply current result by 10
     add %rcx, %rax      # Add new digit
-    
+
     inc %r9
     jmp .Lnti_loop
-    
+
 .Lnti_done:
     test %r10, %r10; jz .Lnti_ret
     neg %rax            # Apply negative sign if needed
@@ -761,7 +767,7 @@ newton_to_int:
     shl $1, %rax        # Re-tag as a Newton Integer
     or $1, %rax
     leave; ret
-    
+
 .Lnti_zero:
     mov $1, %rax        # Tagged 0
     leave; ret
@@ -773,35 +779,35 @@ newton_sizeof:
 
     mov -8(%rdi), %rcx
 
-    cmp $1, %rcx; je .Lns_type1     
+    cmp $1, %rcx; je .Lns_type1
     cmp $2, %rcx; je .Lns_type3     # Route Maps
     cmp $3, %rcx; je .Lns_type3     # Route Arrays
     cmp $5, %rcx; je .Lns_type5     # Route Slices
     jmp .Lns_zero
-    
+
 .Lns_type1:
     mov %rdi, %rsi
     xor %rax, %rax
 .Lns_t1_loop:
     cmpb $0, (%rsi, %rax); je .Lns_ret
     inc %rax; jmp .Lns_t1_loop
-    
+
 .Lns_type3:
     call collection_len
-    leave; ret              
-    
+    leave; ret
+
 .Lns_type5:
     mov 8(%rdi), %rax
     jmp .Lns_ret
-    
+
 .Lns_ret:
     shl $1, %rax; or $1, %rax
     leave; ret
-    
+
 .Lns_zero:
-    mov $1, %rax           
+    mov $1, %rax
     leave; ret
-            
+
 .global newton_inc
 newton_inc:
     push %rbp; mov %rsp, %rbp

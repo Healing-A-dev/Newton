@@ -9,16 +9,16 @@ Standard functions in Newton map directly to hardware-level `CALL` instructions,
 Macros are expanded by the compiler before the Virtual Machine ever sees them. To distinguish a macro from a standard function during execution, **macros must be invoked using the `@` prefix**.
 
 ```asm
-defmacro log_build:
+defmacro logBuild:
     IO.Std_Println "[BUILD STEP COMPLETED]"
 end
 
 fun main:
     ; Standard function call
-    compile_files
+    compileFiles
 
     ; Macro invocation requires the '@' prefix
-    @log_build
+    @logBuild
 end
 ```
 
@@ -50,7 +50,7 @@ fun main:
     set user_age: 16
 
     ; Calling the macro with two arguments
-    @assert ($user_age >= 18), "User must be an adult!"
+    @assert ($user_age >= 18), "User is an adult!"
 end
 ```
 
@@ -66,7 +66,7 @@ fun main:
 
     ; The 'not' operator is handled directly by the AST
     if not $is_valid:
-        println "Invalid state."
+        @println "Invalid state."
     end
 
     ; Negative numbers are parsed natively

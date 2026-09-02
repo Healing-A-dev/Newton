@@ -6,7 +6,7 @@ using enum
 
 set globalImportedModules*: ()
 
-| Helper Functions
+; Helper Functions
 fun newParser: @args tokens
   set result: ("tokens": $tokens, "pos": 0)
   return [@ok, $result]
@@ -44,7 +44,7 @@ fun consume: @args p, k, err
   if $tok{"kind"} == $k:
     return [@ok, (parser.advance $p)]
   end
-  errors.ERR $err, $tok{"line"}, "", ""
+  errors.err $err, $tok{"line"}, "", ""
 end
 
 fun resolveModulePath: @args pathParts
@@ -59,9 +59,9 @@ fun resolveModulePath: @args pathParts
     return [@ok, $envPath << "/" << $relativePath]
   end
 
-  | ############################## |
-  | # TODO: add AppDir() support # |
-  | ############################## |
+  ; ############################## ;
+  ; # TODO: add AppDir() support # ;
+  ; ############################## ;
 
   set globalPath: "/usr/local/lib/newton" << "/" << $relativePath
   if (fileExists $globalPath): return [@ok, $globalPath] end

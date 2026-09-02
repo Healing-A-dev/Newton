@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200">
+  <!-- Main File Body -->
+  <path d="M 20 10 L 60 10 L 80 30 L 80 90 L 20 90 Z" fill="#34495E" stroke="#2C3E50" stroke-width="3"/>
+
+  <!-- Folded Corner -->
+  <path d="M 60 10 L 60 30 L 80 30 Z" fill="#BDC3C7"/>
+
+  <!-- .nt Text -->
+  <text x="50" y="65" font-family="monospace" font-size="24" fill="#ECF0F1" font-weight="bold" text-anchor="middle">
+    .nt
+  </text>
+</svg>

@@ -1,0 +1,41 @@
+; Filename: Process.nt
+; Description: System Processes module for the newton standard library (automatically included)
+; Date: April 30th, 2026 *
+
+fun Fork:
+    @args _null  ; [FIX] Dummy argument
+    set res: proc_fork $_null 
+    return ["ok", $res]
+end
+
+fun Id:
+    @args _null  ; [FIX] Dummy argument
+    set res: proc_pid $_null
+    return ["ok", $res]
+end
+
+fun Wait: @args nohang
+		set res: 0
+		if $nohang == "nohang":
+			res: proc_wait_nohang $res
+		else:
+    	res: proc_wait $res
+    end
+    return ["ok", $res]
+end
+
+fun Sleep:
+    @args sec
+    proc_sleep $sec
+end
+
+fun Nanosleep:
+	@args nanosec
+	__proc_sleep_ms $nanosec
+end
+
+fun Exit:
+    @args code
+	proc_exit $code
+end
+

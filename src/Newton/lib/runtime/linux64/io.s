@@ -3,12 +3,12 @@
     input_buffer: .zero 256
 
 .section .rodata
-    .Lerr_1: .asciz "\r\033[1;31merror[R001]\033[0m: Runtime Panic\r\n  --> \033[1;34m"
-    .Lerr_colon: .asciz ":"
-    .Lerr_2: .asciz "\033[0m\r\n   \033[1;34m|\033[0m\r\n"
-    .Lerr_pipe: .asciz "\033[1;34m | \033[0m"
-    .Lerr_3: .asciz "\r\n   \033[1;34m|\033[0m\r\n   = help: "
-    .Lerr_4: .asciz "\r\n\r\n"
+    .Lerr_1: .asciz "\r\n\033[1;31m--- [ RUNTIME FAULT ] ---\033[0m\r\n\033[1mFile   :\033[0m "
+    .Lerr_line: .asciz " (Line "
+    .Lerr_close: .asciz ")\r\n\033[1mIssue  :\033[0m Runtime Panic\r\n\r\n  "
+    .Lerr_pipe: .asciz " | "
+    .Lerr_hint: .asciz "\r\n\033[1;30mHint   :\033[0m "
+    .Lerr_footer: .asciz "\r\n\033[1;31m--------------------------------\033[0m\r\n\r\n"
 
 .section .text
 
@@ -33,7 +33,6 @@ print_string:
 .Lprint_float: call float_to_string; mov %rax, %rdi; jmp .Lprint_str
 
 .Lprint_view:
-    # Syscall 1 (sys_write) using exact slice length
     mov $1, %rax
     mov 8(%rdi), %rdx      # Length is stored at offset 8
     mov 0(%rdi), %rsi      # Raw char pointer is stored at offset 0
@@ -49,27 +48,23 @@ print_string:
 .Lprint_done: pop %rbx; leave; ret
 
 # --- READ STRING (STDIN) ---
-# Reads until newline or 128 chars. Returns Data Ptr.
 .global read_string
 read_string:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12
 
-    # 1. Allocate Buffer (128 bytes + Header)
     mov $137, %rdi
     call _malloc
     mov %rax, %rbx
 
-    # 2. Setup Header
-    movq $1, 0(%rbx)    # Type String
-    add $8, %rbx        # RBX = Data Ptr
-    xor %r12, %r12      # Index
+    movq $1, 0(%rbx)
+    add $8, %rbx
+    xor %r12, %r12
 
 .Lrs_loop:
-    # 3. Read 1 byte
-    mov $0, %rax        # syscall: read
-    mov $0, %rdi        # fd: stdin
-    lea (%rbx, %r12), %rsi # buffer + index
-    mov $1, %rdx        # len: 1
+    mov $0, %rax
+    mov $0, %rdi
+    lea (%rbx, %r12), %rsi
+    mov $1, %rdx
     syscall
 
     # Check EOF or Error
@@ -78,15 +73,14 @@ read_string:
 
     # Check Newline
     movb (%rbx, %r12), %al
-    cmp $10, %al        # \n
+    cmp $10, %al
     je .Lrs_done
 
     inc %r12
-    cmp $127, %r12      # Max len
+    cmp $127, %r12
     jl .Lrs_loop
 
 .Lrs_done:
-    # 4. Null Terminate
     movb $0, (%rbx, %r12)
     mov %rbx, %rax      # Return Data Ptr
 
@@ -167,27 +161,23 @@ sys_log_err:
 
     mov %rdi, %r12   # Arg 1: Filename
     mov %rsi, %r13   # Arg 2: Line Number
-    mov %rdx, %r14   # Arg 3: The Source Code Line!
-    mov %rcx, %r15   # Arg 4: The Error Message
+    mov %rdx, %r14   # Arg 3: The Source Code Line
+    mov %rcx, %r15   # Arg 4: The Error Message (Hint)
 
-    # 1. Header & Filename
     lea .Lerr_1(%rip), %rdi; call print_raw_os
     mov %r12, %rdi; call print_string
-    lea .Lerr_colon(%rip), %rdi; call print_raw_os
+
+    lea .Lerr_line(%rip), %rdi; call print_raw_os
     mov %r13, %rdi; call print_string
+    lea .Lerr_close(%rip), %rdi; call print_raw_os
 
-    # 2. Empty Pipe
-    lea .Lerr_2(%rip), %rdi; call print_raw_os
-
-    # 3. Print Line Number again, then " | ", then the Source Code
     mov %r13, %rdi; call print_string
     lea .Lerr_pipe(%rip), %rdi; call print_raw_os
     mov %r14, %rdi; call print_string
 
-    # 4. Footer & Help Message
-    lea .Lerr_3(%rip), %rdi; call print_raw_os
+    lea .Lerr_hint(%rip), %rdi; call print_raw_os
     mov %r15, %rdi; call print_string
-    lea .Lerr_4(%rip), %rdi; call print_raw_os
+    lea .Lerr_footer(%rip), %rdi; call print_raw_os
 
     pop %r15; pop %r14; pop %r13; pop %r12
     leave; ret
@@ -225,22 +215,19 @@ sys_file_size:
     push %rbp; mov %rsp, %rbp
     sar $1, %rdi      # untag File Descriptor
 
-    # 1. lseek(fd, 0, SEEK_END)
     mov %rdi, %r8     # Save FD in %r8
     mov $8, %rax      # syscall 8: lseek
     mov $0, %rsi      # offset 0
     mov $2, %rdx      # SEEK_END
     syscall
-    mov %rax, %r9     # Save the returned file size in %r9
 
-    # 2. lseek(fd, 0, SEEK_SET) -> Rewind the file back to the start!
+    mov %rax, %r9     # Save the returned file size in %r9
     mov %r8, %rdi     # Restore FD
     mov $8, %rax
     mov $0, %rsi
     mov $0, %rdx      # SEEK_SET
     syscall
 
-    # 3. Tag the file size and return
     mov %r9, %rax
     shl $1, %rax
     or $1, %rax

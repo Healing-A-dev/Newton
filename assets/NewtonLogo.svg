@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="400" height="400">
+  <!-- Background Circle -->
+  <circle cx="50" cy="50" r="45" fill="#2C3E50"/>
+  
+  <!-- The "Falling Apple" -->
+  <circle cx="50" cy="22" r="6" fill="#E74C3C"/> 
+  
+  <!-- The Letter N -->
+  <path d="M 32 75 L 32 35 L 68 75 L 68 35" 
+        stroke="#ECF0F1" 
+        stroke-width="8" 
+        fill="none" 
+        stroke-linejoin="round" 
+        stroke-linecap="round"/>
+</svg>

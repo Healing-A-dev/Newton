@@ -1,0 +1,21 @@
+; Filename: Test.nt
+; Description: Test module for Newton's standard library.
+; Date: April 13th, 2026
+
+fun TestCase: @args test_name, actual, expected
+	; Error Handling
+	if (typeof $test_name) != "string":
+		return ["error", "In function Test.TestCase ; Expected type string for argument #1; got " << (typeof $test_name)]
+	end
+
+	if $actual == $expected:
+		prints "\x1b[32m[SUCCESS]\x1b[0m " $test_name << " [PASS]\n"
+		return ["ok", 1]
+	else:
+		prints "\x1b[31m[SUCCESS]\x1b[0m " $test_name << " [FAIL]"
+		prints "; Expected: " << (string $expected) << "\n"
+		prints "; Actual:   " << (string $actual) << "\n"
+		return ["ok", 0]
+		; die "Failed Unit Test <" << $test_name << ">", 1
+	end
+end

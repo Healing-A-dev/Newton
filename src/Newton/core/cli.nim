@@ -1,6 +1,6 @@
-import os, strutils
+import os, strutils, osproc
 
-const VERSION*: string = "0.3.0 [BETA]"
+const VERSION*: string = "0.5.1 [BETA]"
 
 type STATES* = tuple [
     State: string,
@@ -20,12 +20,12 @@ type STATES* = tuple [
 const helpMessage: string = """
 Newton Programming Language
 -------------------------------
-usage: newton <command> [<args>] [<flags>]
+Usage: newton <command> [<args>] [<flags>]
 
 commands:
    init <name>    > Initialize a new Newton project skeleton
-   build <file>   > Compile a Newton file or project
-   run* <file>    > Compile and run immediately
+   build <file>   > Compile a Newton file or project [default]
+   run <file>     > Compile and run immediately
    help           > Display this message
    version        > Display the installed build version
 
@@ -44,7 +44,7 @@ advanced flags:
    --noStdlib           > Prevents the standard library from being automatically imported.
    -L                   > Specify a file to link with
    -O                   > Compile to an object file
-   -GVM                 > Compile to GravityVM bytecode
+   -GVM                 > Stop compilation at GravityVM bytecode
 """
 
 # --- Scaffolding Engine ---
@@ -60,7 +60,7 @@ proc initProject(name: string) =
   writeFile(dir / "src" / "Main.nt", mainCode)
 
   # Generate .gitignore
-  let gitignore = "Packages/\nbin/\n*.o\n"
+  let gitignore = "packages/\nbin/\n*.o\n"
   writeFile(dir / ".gitignore", gitignore)
 
   # Generate project configuration as NPF (Non-Newtonian Format)
@@ -139,27 +139,33 @@ proc parseArgs*(ARGS: seq[string]): STATES =
     of "-v", "--verbose":
       DATA.Verbose = "-verbose:true"
     of "-L":
-      case ARGS[counter + 1][^2..^1]
-      of ".o", ".a":
-        DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
-        counter.inc
-      else:
-        if ARGS[counter + 1][^5..^2] == ".so.":
+      if ARGS[counter + 1].len >= 2:
+        case ARGS[counter + 1][^2..^1]
+        of ".o", ".a":
           DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
           counter.inc
         else:
-          if linkedC == false:
-            DATA.LinkerFiles.add("-L:-lc")
-            DATA.LinkerFiles.add("-L:-lm")
-            DATA.LinkerFiles.add("-L:--dynamic-linker")
-            DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
-            linkedC = true
-          DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
-          counter.inc
+          if ARGS[counter + 1].contains(".so."):
+            DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+            counter.inc
+          else:
+            if linkedC == false:
+              DATA.LinkerFiles.add("-L:-lc")
+              DATA.LinkerFiles.add("-L:--dynamic-linker")
+              DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+              linkedC = true
+            if ARGS[counter + 1].endsWith(".so"):
+              DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+              counter.inc
+            else:
+              DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
+            counter.inc
+      else:
+        DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
+        counter.inc
     of "--link-C":
       if linkedC == false:
         DATA.LinkerFiles.add("-L:-lc")
-        DATA.LinkerFiles.add("-L:-lm")
         DATA.LinkerFiles.add("-L:--dynamic-linker")
         DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
         linkedC = true
@@ -178,27 +184,60 @@ proc parseArgs*(ARGS: seq[string]): STATES =
           DATA.Input = arg
     counter.inc
 
-  # Auto-detect .Newtonproj.toml
-  if DATA.Input == "" and fileExists(".Newtonproj.toml"):
+  # Auto-detect .Newtonproj.toml and auto-link packages
+  if fileExists(".Newtonproj.toml") and DATA.Input == "":
       var currentSection = ""
 
       for rawLine in lines(".Newtonproj.toml"):
           let line = rawLine.strip()
           if line == "" or line.startsWith("#"): continue
 
+          # Detect section headers like [build] or [Project]
           if line.startsWith("[") and line.endsWith("]"):
-              currentSection = line[1 .. ^2]
+              currentSection = line[1 .. ^2].toLowerAscii() # Normalize case to handle [Build] or [build]
               continue
 
+          if currentSection == "build":
+              echo "\e[96m[Build-Step]\e[0m ", line
+              let exitCode = execCmd(line)
+              if exitCode != 0:
+                  echo "\e[91m[Newton Build Error]\e[0m Command failed: ", line
+                  quit(1)
+              continue
+
+          elif currentSection == "linkerfiles":
+              DATA.LinkerFiles.add("-L:" & line)
+              continue
+
+          # --- ORIGINAL: Handle key=value sections ---
           let parts = line.split("=", 1)
-          if parts.len == 2 and currentSection == "Project":
+          if parts.len == 2:
               let key = parts[0].strip()
               let val = parts[1].strip().replace("\"", "")
 
-              if key == "entrypoint":
-                  DATA.Input = val
-              elif key == "name" and DATA.Output == "":
-                  DATA.Output = "bin" / val
+              if currentSection == "project":
+                  if key == "entrypoint" and DATA.Input == "":
+                      DATA.Input = val
+                  elif key == "name" and DATA.Output == "":
+                      DATA.Output = "bin" / val
+
+              elif currentSection == "flags":
+                  let flagVal = val.toLowerAscii()
+                  if flagVal == "true":
+                      if key == "noStdlib":  DATA.noStdlib = true
+                      elif key == "script":  DATA.isScript = true
+                      elif key == "verbose": DATA.Verbose  = "-verbose:true"
+                      elif key == "link-C":
+                         DATA.LinkerFiles.add("-L:-lc")
+                         DATA.LinkerFiles.add("-L:-lm")
+                         DATA.LinkerFiles.add("-L:--dynamic-linker")
+                         DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+                         linkedC = true
+
+              elif currentSection == "packages":
+                  let pkgObj = "packages" / key & ".o"
+                  if fileExists(pkgObj):
+                      DATA.LinkerFiles.add("-L:" & pkgObj)
 
   if DATA.Input == "" and DATA.State != "help":
       echo "\e[1;31merror:\e[0m no input file provided or .Newtonproj.toml found."

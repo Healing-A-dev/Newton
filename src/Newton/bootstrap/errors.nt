@@ -1,102 +1,100 @@
-using Std::String
-using Std::System
+using std::Math
 
-set currentCompilingFile*: "main.nt"
-set ERRCOUNT*: 0
+set newtonDiagnostic*: (
+	line: 0,
+	code: "",
+	hint: "",
+)
 
-fun PAD: @args char, padding
-	set output: ""
-	for &s, 0, $padding, 1:
-		output: $output >> $char
+set isLspMode*: false
+set currentCompilingFile*: ""
+set errCount*: 0
+
+fun repeat: @args v, count
+	set __out__: ""
+	for &s, 0, $count, 1:
+		__out__: $__out__ << $v
 	end
-	return $output
+	return $__out__
 end
 
-fun STRIP_LEADING: @args source
-	set char_array: String.Split $source, ""
-	set start_pos: 0
-	set hit_char: false
-
-	| Seeing if source has leading whitespace
-	if $char_array{0} == " ": return [@ok, $source] end
-	while not $hit_char:
-		if $char_array{$start_pos} == " ":
-			char_array{$start_pos}: ""
+fun stripLeadingWhitespace: @args str
+	set start: 0
+	set count: 0
+	for &s, 0, (sizeof $str), 1:
+		if $str{$s} != 32 and $str{$s} != 9:
+			start: $s
+			break
 		else:
-			hit_char: true
+			match $str{$s}:
+				32 -> count: $count + 1
+				9  -> count: $count + 2
+			end
 		end
 	end
-	set stripped: Collection.Join $char_array, ""
-	return [@ok, $stripped]
+	return (String: (String.Sub $str, $start, (sizeof $str) - $start), Spaces: $count)
 end
 
-fun ERR: @args Msg, Line, Code, Hint
-	| Exit early if more than 10 errors are found (to prevent flooding the terminal)
-	if $errors.ERRCOUNT > 10:
-		println "Compilitaion Failed With <\x1b[1;31m" << (string $errors.ERRCOUNT) << "+\x1b[0m> Errors"
-		System.Exit 1
-	end
+fun err: @args msg, line, code, hint
+ 	if $errors.errCount >= 10:
+ 		@println "Compilation failed with <\x1b[1;31m{}\x1b[0m> errors", $errors.errCount
+ 		@quit 1
+ 	end
 
-	set finalCode: $Code
-	set finalHint: $Hint
+ 	set final_code: $code
+ 	set final_hint: $hint
 
-	if $finalCode == "":
-		if (String.Has $Msg, "Unexpected character"):
-			finalCode: "E001"
-			if $finalHint == "": 
-				finalHint: "Unexpcted symbol found. Did you make a typo?"
-			end
-		elseif (String.Has $Msg, "Expected") or (String.Has $Msg, "Unknown statement"):
-			finalCode: "E002"
-			if $finalHint == "":
-				finalHint: "Unexpected token encountered. Check for missing commas, colons, or mismatched/missing brackets/parenthesis."
-			end
-		elseif (String.Has $Msg, "Could not find module"):
-			finalCode: "E003"
-			if $finalHint == "":
-				finalHint: "Module resolution failed. Check if the file exists in the correct directory, or verify your 'using' path."
-			end
-		else:
-			finalCode: "E099"
-			if $finalHint == "":
-				finalHint: "An internal compilation error has occured."
-			end
-		end
-	end
+ 	if $final_code == "":
+ 		if (String.Has $msg, "Unexpected character"):
+ 			final_code: "E001"
+ 			if $final_hint == "": final_hint: "The lexer encountered an invalid character. Did you make a typo?" end
+ 		elseif (String.Has $msg, "Expected") or (String.Has $msg, "Unknown statement"):
+ 			final_code: "E002"
+ 			if $final_hint == "": final_hint: "The parser encountred an unexpected token. Check for missing commas, colons, or mismatched/missing " << "brackets, parenthesis, and/or braces." end
+ 		elseif (String.Has $msg, "Could not find module"):
+ 			final_code: "E003"
+ 			if $final_hint == "": final_hint: "Module resolution failed. Check if the file exists in the correct directory, or verify your import ('using') path." end
+ 		else:
+ 			final_code: "E099"
+ 			if $final_hint == "": final_hint: "An internal compilation constraint was violated." end
+ 		end
+ 	end
 
-	if $errors.ERRCOUNT == 0:
-		println "\x1b[1;31merror[" << $finalCode << "]\x1b[0m\x1b[1m: " << $Msg << "\x1b[0m"
-		println "\x1b[1;34m  --> \x1b[0m" << $errors.currentCompilingFile << ":" << $Line
-		println "\x1b[1;34m   |\x1b[0m"
+ 	; TODO: Implement LSP errors
+ 	if $errors.isLspMode:
+ 		set e: $errors.newtonDiagnostic
+ 		die $e{hint}, 10
+ 	end
 
-		set lineContent: ""
-		if (fileExists $errors.currentCompilingFile):
-			set lines: String.Split (fcontent $errors.currentCompilingFile), "\n"
-			if $Line > 0 and $Line <= (sizeof $lines):
-				lineContent: $lines{$Line - 1}
-			end
-		end
+ 	if $errors.errCount == 0:
+ 		@println "\x1b[1;31m--- [ COMPILER FAULT ] ---\x1b[0m"
+ 		@println "\x1b[1mCode   :\x1b[0m", $final_code
+ 		@println "\x1b[1mFile   :\x1b[0m {} (Line {})", $errors.currentCompilingFile, $line
+ 		@println "\x1b[1mReason :\x1b[0m {}\n", $msg
 
-		set lineStr: string $Line
-		set pad: errors.PAD " ", (sizeof $lineStr)		
+ 		set line_content: ""
+ 		if (fileExists $errors.currentCompilingFile):
+ 			set lines: String.Std_Split (readfile $errors.currentCompilingFile), "\n"
+ 			if $line > 0 and $line <= (sizeof $lines):
+ 				line_content: $lines{$line - 1}
+ 			end
+ 		end
 
-		if $lineContent != "":
-			println " \x1b[1;34m" << $lineStr << " | \x1b[0m" << $lineContent
+ 		if $line_content != 0:
+ 			set pad: errors.repeat " ", (sizeof (string $line))
+ 			@println "  {} | {}", $line, $line_content
 
-			set trimmed: errors.STRIP_LEADING $lineContent
-			set spaceCount: (sizeof $lineContent) - (sizeof $trimmed)
-			set squiggly: (errors.PAD " ", $spaceCount) << "\x1b[1;31m" << (errors.PAD "^", (sizeof $trimmed)) << "\x1b[0m"
+ 			set trimmed: errors.stripLeadingWhitespace $line_content
+ 			set space_count: $trimmed{"Spaces"}
+ 			set squiggly: (errors.repeat " ", $space_count) << "\x1b[1;31m" << (errors.repeat "^", (Math.Max 1, (sizeof $trimmed{"String"}))) << "\x1b[0m"
 
-			println " \x1b[1;34m" << $pad << " | \x1b[0m" << $squiggly
-		else:
-			println "\x1b[1;34m" << $lineStr << " | \x1b[0m <source code unavailable>"
-		end
+ 			@println "  {} | {}", $pad, $squiggly
+ 		else:
+ 			@println "  <source code unavailable>"
+ 		end
 
-		println "\x1b[1;34m   |\x1b[0m"
-		if $finalHint != "":
-			println "\x1b[1;36m   = help\x1b[0m: " << $finalHint
-		end
-		println "\n"
-	end
-	errors.ERRCOUNT: $errors.ERRCOUNT + 1
+ 		@println ""
+ 		if $final_hint != "": @println "\x1b[1;30mHint  :\x1b[0m " << $final_hint end
+ 	end
+ 	errors.errCount: $errors.errCount + 1
 end
