@@ -1,4 +1,4 @@
-using Std::OS
+using std::OS
 using lexer
 using ast
 using errors

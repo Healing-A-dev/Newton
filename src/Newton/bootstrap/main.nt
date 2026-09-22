@@ -11,4 +11,5 @@ fun main:
 	set source: readfile $INPUT_FILE
 	set tokens: lexer.lex $source
 	set p: parser.newParser $tokens
+	@println $INPUT_FILE << " ~> \x1b[92mPASSED\x1b[0m"
 end

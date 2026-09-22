@@ -1,3 +1,5 @@
+test
+
 fun main
 	@println "Hello, World!"
 end

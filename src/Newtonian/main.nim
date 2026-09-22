@@ -7,6 +7,7 @@ type
     entrypoint: string
     packages: Table[string, string]
 
+# --- 1. PARSE THE .NPF FILE ---
 proc parseNpf(): NpfManifest =
   var manifest = NpfManifest(packages: initTable[string, string]())
   if not fileExists(".Newtonproj.toml"):
@@ -36,6 +37,7 @@ proc parseNpf(): NpfManifest =
 
   return manifest
 
+# --- 2. ADD A NEW PACKAGE ---
 proc addPackage(name: string, url: string, isLocal: bool) =
   if not fileExists(".Newtonproj.toml"):
     echo "\e[91m[NNPM Error]\e[0m No '.Newtonproj.toml' found."
@@ -75,6 +77,8 @@ proc addPackage(name: string, url: string, isLocal: bool) =
   echo "\e[92m[NNPM Success]\e[0m Added '" & name & "' to .Newtonproj.toml!"
 
 
+# --- 3. THE MODULE LINKER ---
+# --- 3. THE MODULE INSTALLER ---
 proc installPackage(pkgDir: string, outName: string) =
   echo "    \e[96m-> Installing source tree for " & outName & "...\e[0m"
 
@@ -82,15 +86,19 @@ proc installPackage(pkgDir: string, outName: string) =
   if not dirExists(projectCacheDir): createDir(projectCacheDir)
   let targetDir = projectCacheDir / outName
 
+  # 1. Clean old versions
   if dirExists(targetDir): removeDir(targetDir)
 
+  # 2. Copy the raw source code into the project's packages folder
   copyDir(pkgDir, targetDir)
 
+  # 3. Strip out version control files to keep the project clean
   if dirExists(targetDir / ".git"): removeDir(targetDir / ".git")
 
   echo "    \e[92m-> " & outName & " installed successfully!\e[0m"
 
 
+# --- 4. THE FETCHER ---
 proc fetchPackages(manifest: NpfManifest) =
   let globalCacheDir = getEnv("HOME") / ".nnpm" / "packages"
   if not dirExists(globalCacheDir): createDir(globalCacheDir)
@@ -104,9 +112,10 @@ proc fetchPackages(manifest: NpfManifest) =
         echo "\e[91m[NNPM Error]\e[0m Local path does not exist: " & localPath
         continue
 
+      # Look for package.nnpm directly in the live folder
       let pkgManifestPath = localPath / "package.nnpm"
       var outName = name
-      var entryFile = name & ".nt"
+      var entryFile = name & ".nt" # <--- [NEW] Default to package_name.nt
 
       if fileExists(pkgManifestPath):
         for line in lines(pkgManifestPath):
@@ -117,6 +126,7 @@ proc fetchPackages(manifest: NpfManifest) =
             let parts = line.split("Entry ->")
             if parts.len == 2: entryFile = parts[1].strip().replace("\"", "")
 
+      # Amalgamate straight from their live code!
       installPackage(localPath, outName)
       continue
 
@@ -135,6 +145,7 @@ proc fetchPackages(manifest: NpfManifest) =
         echo "\e[91m[NNPM Error]\e[0m Failed to fetch " & name & "!\n" & output
         continue
 
+    # Now look for the package.nnpm file to find the output name!
     let pkgManifestPath = pkgDir / "package.nnpm"
     if fileExists(pkgManifestPath):
       var outName = name # Default to the package name
@@ -143,7 +154,7 @@ proc fetchPackages(manifest: NpfManifest) =
         if "Out ->" in line:
           let parts = line.split("Out ->")
           if parts.len == 2: outName = parts[1].strip().replace("\"", "")
-        elif "Entry ->" in line:
+        elif "Entry ->" in line: # <--- [NEW] Parse the Entry point
           let parts = line.split("Entry ->")
           if parts.len == 2: entryFile = parts[1].strip().replace("\"", "")
 
@@ -153,6 +164,7 @@ proc fetchPackages(manifest: NpfManifest) =
       installPackage(pkgDir, name)
 
 
+# --- 5. CLI ENGINE ---
 proc main() =
   let args = commandLineParams()
   if args.len == 0:
