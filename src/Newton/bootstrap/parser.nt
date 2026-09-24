@@ -189,7 +189,7 @@ fun parsePrimary: @args p
     set name: "MACRO_" << $__temp__{"lexeme"}
     set args: []
 
-    if parser.pmatch $p, $enum.tokLParen:
+    if (parser.pmatch $p, $enum.tokLParen):
       set tok: parser.peek $p, 0
       if $tok{"kind"} != $enum.tokRParen:
         push $args, (parser.parseExpression $p)
@@ -199,6 +199,19 @@ fun parsePrimary: @args p
       end
       parser.consume $p, $enum.tokRParen, "Expected ')'"
     else:
+      set peeked: parser.peek $p, 0
+      match $peeked:
+        $enum.tokNumberLit  -> push $args, (parser.parseExpression $p)
+        $enum.tokFloatLit   -> push $args, (parser.parseExpression $p)
+        $enum.tokStringLit  -> push $args, (parser.parseExpression $p)
+        $enum.tokDollar     -> push $args, (parser.parseExpression $p)
+        $enum.tokAmpersand  -> push $args, (parser.parseExpression $p)
+        $enum.tokIdentifier -> push $args, (parser.parseExpression $p)
+        $enum.tokInput      -> push $args, (parser.parseExpression $p)
+        $enum.tokLBracket   -> push $args, (parser.parseExpression $p)
+        $enum.tokLParen     -> push $args, (parser.parseExpression $p)
+        $enum.tokMacroRef   -> push $args, (parser.parseExpression $p)
+      end
     end
   end
 end

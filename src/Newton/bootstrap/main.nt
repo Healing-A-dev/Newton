@@ -7,9 +7,10 @@ set INPUT_FILE*: "test.nt"
 set ERRNO: 0
 
 fun main:
-	errors.currentCompilingFile: $INPUT_FILE
-	set source: readfile $INPUT_FILE
-	set tokens: lexer.lex $source
-	set p: parser.newParser $tokens
-	@println $INPUT_FILE << " ~> \x1b[92mPASSED\x1b[0m"
+    errors.currentCompilingFile: $INPUT_FILE
+    set source: readfile $INPUT_FILE
+    set tokens: lexer.lex $source
+    set p: parser.newParser $tokens
+    if $errors.errCount > 0: @quit 1 end
+    @println $INPUT_FILE << " ~> \x1b[92mPASSED\x1b[0m"
 end

@@ -154,7 +154,7 @@ install-GVM:
 	git clone -b Nightly https://github.com/Healing-A-Dev/GravityVM.git build
 	$(MAKE) -C build build HINTS="--hints:on"
 	rm -rf build
-	gvm clean-cahce
+	gvm clean-cache
 
 
 clean:
