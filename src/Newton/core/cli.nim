@@ -1,6 +1,6 @@
 import os, strutils, osproc
 
-const VERSION*: string = "0.6.0 [BETA]"
+const VERSION*: string = "0.6.1 [BETA]"
 
 type STATES* = tuple [
     State: string,
