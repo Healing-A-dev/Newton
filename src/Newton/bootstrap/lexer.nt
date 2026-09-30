@@ -2,7 +2,7 @@ using enum
 using errors
 
 ; Create token enums (this is make the file easier to debug)
-; enum.InitTokenEnums
+; enum.initTokenEnums
 
 set keywords*: (
 	"set":      $enum.tokSet,
@@ -36,7 +36,7 @@ end
 
 ; Alphanumeric Checkers
 fun isAlphanumeric: @args char
-	set ascii: String.Ascii $char
+	set ascii: string.ascii $char
 	if ($ascii >= 48) and ($ascii <= 57):
 		return [@ok, 1]
 	elseif ($ascii >= 65) and ($ascii <= 90):
@@ -50,7 +50,7 @@ fun isAlphanumeric: @args char
 end
 
 fun isAlphaAscii: @args char
-	set ascii: String.Ascii $char
+	set ascii: string.ascii $char
 	if ($ascii >= 65) and ($ascii <= 90):
 		return [@ok, 1]
 	elseif ($ascii >= 97) and ($ascii <= 122):
@@ -61,7 +61,7 @@ end
 
 ; Digit Checker
 fun isDigit: @args char
-	set ascii: String.Ascii $char
+	set ascii: string.ascii $char
 	if ($ascii >= 48) and ($ascii <= 57):
 		return [@ok, 1]
 	end
@@ -81,7 +81,7 @@ end
 fun lex: @args data
 	set tokens: []
 	set [start, current, line]: [0, 0, 1]
-	set data: String.Std_Split $data, ""
+	set data: string.split $data, ""
 
 	while $current < (sizeof $data):
 		start: $current
@@ -185,7 +185,7 @@ fun lex: @args data
 			elseif $text == "@namespace":
 				push $tokens, (lexer.newToken $enum.tokNamespace, $text, $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokMacroRef, (String.Replace $text, "@", ""), $line)
+				push $tokens, (lexer.newToken $enum.tokMacroRef, (string.replace $text, "@", ""), $line)
 			end
 
 		; Strings
@@ -235,7 +235,7 @@ fun lex: @args data
 					current: $current + 1
 				end
 				set text: lexer.combine $data, $start, $current
-				if (Collection.HasKey $lexer.keywords, $text):
+				if (collection.hasKey $lexer.keywords, $text):
 					push $tokens, (lexer.newToken $lexer.keywords{$text}, $text, $line)
 				else:
 					push $tokens, (lexer.newToken $enum.tokIdentifier, $text, $line)

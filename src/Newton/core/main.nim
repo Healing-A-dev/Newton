@@ -2,9 +2,13 @@ import strutils, os, osproc, streams
 import lexer, parser, codegen, ast, cli, errors, optimizer
 
 var ERRNO: int = 0
-let SCRIPT_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "bin" / "newton@core__script.component"
-let NEWTON_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.o"
-let NEWTON_WIN_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.a"
+# let SCRIPT_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "bin" / "newton@core__script.component"
+let SCRIPT_PATH: string = getHomeDir() / ".newton" / "bin" / "newton@core__script.component"
+# let NEWTON_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.o"
+let NEWTON_LIB_PATH: string = getHomeDir() / ".newton" / "lib" / "libnewton.o"
+
+# let NEWTON_WIN_LIB_PATH: string = getHomeDir() / ".local" / "lib" / "newton" / "lib" / "libnewton.a"
+let NEWTON_WIN_LIB_PATH: string = getHomeDir() / ".newton" / "lib" / "libnewton.a"
 
 proc parseOpcode(op: string): uint8 =
   var val = 0
@@ -56,11 +60,16 @@ proc readFileContent(path: string): string =
 
 
 proc main(INPUT_FILE, OUTPUT_FILE: string, e: STATES) =
+  var update_argv = " Std_Base_newton_update_argv \"" & INPUT_FILE & "\"\n"
   if INPUT_FILE.endsWith(".nts") or e.isScript:
-    quit(execCmd(SCRIPT_PATH & " " & INPUT_FILE))
+    quit(execCmd(SCRIPT_PATH & " " & INPUT_FILE & " " & commandLineParams().join(" ")))
 
   errors.currentCompilingFile = INPUT_FILE
-  let source = readFileContent(INPUT_FILE)
+  if e.noStdlib:
+    update_argv = ""
+  elif INPUT_FILE.startsWith("__@nout"):
+    update_argv = "argc: (sizeof $argv)\n"
+  let source = readFileContent(INPUT_FILE) & "\n" & update_argv
   let tokens = lex(source)
   let p = newParser(tokens)
   var astRoot = parseProgram(p)
@@ -96,17 +105,20 @@ when isMainModule:
 
   # Building compiled file with gravity backend
   if data.Backend != "-b:gravity":
+      if data.State != "run" and data.RunArguments.len > 0 and not data.Input.startsWith("__@nout"):
+        echo "\e[1;31merror:\e[0m Arguments can only be passed with 'newton run' or the '-r, --run' flag."
+        quit(1)
       if data.TargetOS[3..^1] != hostOS and data.TargetOS != hostOS:
         case data.TargetOS[3..^1]
-        of "win64":
-          ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:" & NEWTON_WIN_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.Verbose & " "  & data.TargetOS & " " & data.ObjectOutput)
+        of "win64", "win32":
+          ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -l:" & NEWTON_WIN_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.RunArguments.join(" ") & " "& data.Verbose & " "  & data.TargetOS & " " & data.ObjectOutput)
         of "darwin":
           echo "TODO: IMPLEMENT DARWIN (MACOS) SUPPORT"
           discard
         else:
-          ERR("Unsupported platform <\e[1;31m" & data.TargetOS[3..^1] & "\e[0m\e[1m>", 0, "", "Supported platforms linux|win64|darwin")
+          ERR("Unsupported platform <\e[1;31m" & data.TargetOS[3..^1] & "\e[0m\e[1m>", 0, "", "Supported platforms linux|win64, win32|darwin")
       else:
-        ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -L:" & NEWTON_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.Verbose & " " & data.ObjectOutput)
+        ERRNO = execCmd("gvm " & data.State & " -i:" & data.Output & ".gvt -o:" & data.Output & " " & data.Intermidiates & " " & data.Backend & " " & data.Fallback & " -l:" & NEWTON_LIB_PATH & " " & data.LinkerFiles.join(" ") & " " & data.RunArguments.join(" ") & " " & data.Verbose & " " & data.ObjectOutput)
   else:
     echo "Genereated bytecode file <\e[96m" & data.Output & ".gvt\e[0m>"
 

@@ -1,0 +1,83 @@
+; Filename: file.nt
+; Description: File handling module for Newton's standard library
+; Date: April 30th, 2026 *
+
+fun open: @args path, flags
+    set fd: sys_open $path, $flags
+    if $fd < 0:
+    	return ["error", "file.open ; Could not open file: `" << $path << "`"]
+    end
+    return ["ok", $fd]
+end
+
+fun write: @args fd, data
+    set bytes_written: sys_write $fd, $data
+    if $bytes_written < 0:
+        return ["error", "file.write ; Failed to write to file descriptor: " << $fd]
+    end
+    return ["ok", $bytes_written]
+end
+
+fun writeBytes: @args fd, data
+    set bytes_written: __file_write_bin $fd, $data
+	if $bytes_written < 0:
+        return ["error", "file.write ; Failed to write to file descriptor: " << $fd]
+    end
+    return ["ok", $bytes_written]
+end
+
+; Read the given length of the file
+fun read: @args fd, len
+    set data: sys_read $fd, $len
+    if $data == "-1":
+        return ["error", "file.read ; Failed to read from file descriptor."]
+    end
+    return ["ok", $data]
+end
+
+fun readEntireFile: @args path
+	set file: sys_open $path, 0
+	if $file < 0:
+		return ["error", "file.readEntireFile ; Could not open file:  `" << $path << "`"]
+	end
+	sys_close $file
+	set data: read_file $path
+	return ["ok", $data]
+end
+
+fun close: @args fd
+    set res: sys_close $fd
+    return ["ok", $res]
+end
+
+fun exists: @args path
+    set status: sys_access $path
+    if $status == 0:
+        return ["ok", 1]
+    end
+    return ["ok", 0]
+end
+
+fun delete: @args path
+    set res: sys_unlink $path
+    if $res < 0:
+        return ["error", "file.delete ; Permission denied or file missing: `" << $path << "`"]
+    end
+    return ["ok", $res]
+end
+
+fun newDirectory: @args path
+    set res: sys_mkdir $path
+    if $res < 0:
+        return ["error", "file.mkdir ; Could not create directory: `" << $path << "`"]
+    end
+    return ["ok", $res]
+end
+
+fun sizeof: @args fd
+	set size: __file_size $fd
+    if $size < 0:
+        return ["error", "file.sizeof ; Invalid file descriptor."]
+    end
+    return ["ok", $size]
+end

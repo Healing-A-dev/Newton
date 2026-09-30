@@ -1,0 +1,91 @@
+; Filename: path.nt
+; Description: Standard library module ot handle file/directory pathing and parsing
+; Date: April 13th, 2026
+
+fun join: @args path_1, path_2
+	; Error handling (imporoper typing)
+	set [tp1, tp2]: [(typeof $path_1), (typeof $path_2)]
+	if $tp1 != "string":
+		return ["error", "In function path.join ; Expected type string for argument #1; got " << $tp1]
+	end
+	if $tp2 != "string":
+		return ["error", "In function path.join ; Expected type string for argument #2; got " << $tp2]
+	end
+
+	; Checking for and removing trailing backslash
+	set len_path_1: sizeof $path_1
+	if $len_path_1 > 0:
+		if (string.endsWith $path_1, "/"):
+			path_1: string.chop $path_1
+		end
+	end
+
+	; Checking for and removing leading backslash
+	set len_path_2: sizeof $path_2
+	if $len_path_2 > 0:
+		if (string.startsWith $path_2, "/"):
+			path_2: string.sub $path_2, 1, ($len_path_2)
+		end
+	end
+	return ["ok", $path_1 << "/" << $path_2]
+end
+
+fun extension: @args path
+	; Error handling
+	if (typeof $path) != "string":
+		return ["error", "In function path.extension ; Expected type string; got " << (typeof $path)]
+	end
+
+	; Getting file extension
+	set parts: string.split $path, "."
+	set count: sizeof $parts
+	if $count > 1:
+		return ["ok", "." << $parts{($count - 1)}]
+	end
+	return ["ok", ""]
+end
+
+fun basename: @args path
+	; Error handling
+	if (typeof $path) != "string":
+		return ["error", "In function path.basename ; Expected type string; got " << (typeof $path)]
+	end
+
+	set parts: string.split $path, "/"
+	set count: sizeof $parts
+	if $count > 0:
+		return ["ok", $parts{($count - 1)}]
+	end
+	return ["ok", $path]
+end
+
+fun dirname: @args path
+	; Error handling
+	if (typeof $path) != "string":
+		return ["error", "In function path.dirname ; Expected type string; got " << (typeof $path)]
+	end
+
+	set parts: string.split $path, "/"
+	set count: sizeof $parts
+
+	; Simply a file (current directory)
+	if $count <= 1:
+		return ["ok", "."]
+	end
+
+	set dir: ""
+	set i: 0
+	while $i < ($count - 1):
+		dir: $dir << $parts{$i}
+		if $i < ($count - 2):
+			dir: $dir << "/"
+		end
+		i: $i + 1
+	end
+
+	; Root directory (edge case)
+	if $dir == "":
+		return ["ok", "/"]
+	end
+	return ["ok", $dir]
+end

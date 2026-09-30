@@ -7,34 +7,29 @@
 int_to_string:
     push %rbp
     mov %rsp, %rbp
-    sub $32, %rsp      # Create a 32-byte local buffer on the stack
-
-    # 1. Untag the Newton integer
+    sub $32, %rsp
     sar $1, %rdi
     mov %rdi, %rax
-
-    # 2. Handle Zero explicitly
     test %rax, %rax
     jnz .Lits_nonzero
-
-    mov $2, %rdi       # Alloc 2 bytes ("0" + "\0")
+    mov $2, %rdi
     call _malloc
-    movq $1, 0(%rax)   # Tag as Type 1 String
-    add $8, %rax       # Shift to perfectly aligned payload
-    movw $0x0030, 0(%rax) # Write '0' and '\0'
+    movq $1, 0(%rax)
+    add $8, %rax
+    movw $0x0030, 0(%rax)
     leave
     ret
 
 .Lits_nonzero:
-    movq $0, -8(%rbp)  # is_neg = false
+    movq $0, -8(%rbp)
     cmp $0, %rax
     jge .Lits_pos
     neg %rax
-    movq $1, -8(%rbp)  # is_neg = true
+    movq $1, -8(%rbp)
 
 .Lits_pos:
     lea -10(%rbp), %rcx
-    movb $0, (%rcx)    # Null terminator
+    movb $0, (%rcx)
     dec %rcx
 
     mov $10, %r8
@@ -55,32 +50,23 @@ int_to_string:
     dec %rcx
 
 .Lits_alloc:
-    inc %rcx           # %rcx now points to the first character!
-
-    # 3. Calculate Exact Length
+    inc %rcx
     lea -10(%rbp), %r9
-    sub %rcx, %r9      # r9 = length (excluding \0)
-
-    # 4. Allocate Exact Heap Memory
+    sub %rcx, %r9
     mov %r9, %rdi
-    add $9, %rdi           # Add 1 for \0
-
-    push %rcx          # Preserve registers across _malloc
+    add $9, %rdi
+    push %rcx
     push %r9
     call _malloc
     pop %r9
     pop %rcx
-
-    movq $1, 0(%rax)   # Tag as Type 1
-    add $8, %rax       # Shift to perfectly aligned payload!
-
-    # 5. Copy from Stack to GC-Safe Heap Buffer
+    movq $1, 0(%rax)
+    add $8, %rax
     mov %rax, %rdi
     mov %rcx, %rsi
     mov %r9, %rcx
     rep movsb
-    movb $0, (%rdi)    # Null terminate securely
-
+    movb $0, (%rdi)
     leave
     ret
 
@@ -104,12 +90,14 @@ float_to_string:
     inc %rbx
     subsd %xmm0, %xmm1
     movapd %xmm1, %xmm0
+
 .FTS_pos:
     cvttsd2si %xmm0, %rax
     mov %rax, %r8
     mov %rax, %rcx
     mov $1, %r9
     mov $10, %rsi
+
 .FTS_count_loop:
     cmp $10, %rcx
     jl .FTS_write_start
@@ -119,10 +107,12 @@ float_to_string:
     mov %rax, %rcx
     inc %r9
     jmp .FTS_count_loop
+
 .FTS_write_start:
     add %r9, %rbx
     mov %rbx, %rcx
     mov %r8, %rax
+
 .FTS_write_loop:
     dec %rcx
     xor %rdx, %rdx
@@ -136,6 +126,7 @@ float_to_string:
     cvtsi2sd %r8, %xmm1
     subsd %xmm1, %xmm0
     mov $6, %rcx
+
 .FTS_frac_loop:
     mulsd FLOAT_TEN(%rip), %xmm0
     cvttsd2si %xmm0, %rax
@@ -163,20 +154,18 @@ runtime_to_string:
     je .ret_self
     cmp $4, %rax
     je float_to_string
-    # unknown? return self
+
 .ret_self:
     mov %rdi, %rax
     ret
 
 .global get_double_value
 get_double_value:
-    test %rdi, %rdi         # [FIX] Prevent Segfaults on uninitialized variables!
+    test %rdi, %rdi
     jz .Lgdv_null
-
     mov %rdi, %rax
     test $1, %rax
     jz .read_obj
-
     sar $1, %rax
     cvtsi2sd %rax, %xmm0
     ret
@@ -186,7 +175,7 @@ get_double_value:
     ret
 
 .Lgdv_null:
-    pxor %xmm0, %xmm0       # Coalesce NULL to 0.0
+    pxor %xmm0, %xmm0
     ret
 
 .global runtime_add
@@ -206,6 +195,7 @@ runtime_add:
     je .Ldispatch_string_concat
     cmp $3, %rax
     je .Ldispatch_array_concat
+
 .Lcheck_float_add:
     mov %rsi, -8(%rbp)
     call get_double_value
@@ -218,16 +208,19 @@ runtime_add:
     call newton_box_float
     leave
     ret
+
 .Ladd_ints:
     mov %rdi, %rax
     add %rsi, %rax
     dec %rax
     leave
     ret
+
 .Ldispatch_string_concat:
     call string_concat
     leave
     ret
+
 .Ldispatch_array_concat:
     call array_concat
     leave
@@ -254,6 +247,7 @@ runtime_sub:
     call newton_box_float
     leave
     ret
+
 .Lsub_ints:
     mov %rdi, %rax
     sub %rsi, %rax
@@ -282,6 +276,7 @@ runtime_mul:
     call newton_box_float
     leave
     ret
+
 .Lmul_ints:
     sar $1, %rdi
     sar $1, %rsi
@@ -314,28 +309,21 @@ string_compare_fast:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13
     mov %rdi, %rbx; mov %rsi, %r12
-
-    # 1. Compare lengths first (O(1) rejection)
     mov %rbx, %rdi; call string_len; mov %rax, %r13
     mov %r12, %rdi; call string_len
     cmp %rax, %r13; jne .Lsc_false
-
-    # 2. Resolve Pointer A
     mov %rbx, %rdi; mov -8(%rdi), %rcx
     cmp $5, %rcx; jne .Lsc_ptr1
     mov 0(%rdi), %rdi
-.Lsc_ptr1:
 
-    # 3. Resolve Pointer B
+.Lsc_ptr1:
     mov %r12, %rsi; mov -8(%rsi), %rcx
     cmp $5, %rcx; jne .Lsc_ptr2
     mov 0(%rsi), %rsi
-.Lsc_ptr2:
 
-    # 4. Hardware Byte Comparison
+.Lsc_ptr2:
     mov %r13, %rcx
     test %rcx, %rcx; jz .Lsc_true
-
     cld
     repe cmpsb
     jne .Lsc_false
@@ -347,18 +335,16 @@ string_compare_fast:
 .global runtime_eq
 runtime_eq:
     push %rbp; mov %rsp, %rbp
-    cmp %rdi, %rsi; je .Lreq_true     # Fast-path: Identical pointers
-
+    cmp %rdi, %rsi; je .Lreq_true
     mov %rdi, %rax; and $1, %rax; jnz .Lreq_false
     mov %rsi, %rax; and $1, %rax; jnz .Lreq_false
     test %rdi, %rdi; jz .Lreq_false
     test %rsi, %rsi; jz .Lreq_false
-
-    # Verify both are Strings (Type 1 or 5)
     mov -8(%rdi), %r8
     cmp $1, %r8; je .Lreq_str
     cmp $5, %r8; je .Lreq_str
     jmp .Lreq_false
+
 .Lreq_str:
     mov -8(%rsi), %r9
     cmp $1, %r9; je .Lreq_do_str
@@ -370,14 +356,14 @@ runtime_eq:
     cmp $1, %rax; je .Lreq_true
     jmp .Lreq_false
 
-.Lreq_true: mov $3, %rax; leave; ret   # Return Tagged True
-.Lreq_false: mov $1, %rax; leave; ret  # Return Tagged False
+.Lreq_true: mov $3, %rax; leave; ret
+.Lreq_false: mov $1, %rax; leave; ret
 
 # --- SAFE NULL HANDLER ---
 .Leq_check_null:
     test %rsi, %rsi
-    jz .Leq_true           # If both are 0, they are equal!
-    jmp .Leq_false         # If RDI is 0 but RSI is valid, not equal
+    jz .Leq_true
+    jmp .Leq_false
 
 .Leq_ints:
     cmp %rdi, %rsi
@@ -391,11 +377,11 @@ runtime_eq:
     jmp .Leq_false
 
 .Leq_true:
-    mov $3, %rax        # True (1 | 2)
+    mov $3, %rax
     leave; ret
 
 .Leq_false:
-    mov $1, %rax        # False (0 | 1)
+    mov $1, %rax
     leave; ret
 
 .global runtime_neq
@@ -424,6 +410,7 @@ runtime_gt:
     ucomisd %xmm1, %xmm0
     ja .Ltrue
     jmp .Lfalse
+
 .Lgt_ints:
     cmp %rsi, %rdi
     jg .Ltrue
@@ -449,6 +436,7 @@ runtime_lt:
     ucomisd %xmm1, %xmm0
     jb .Ltrue
     jmp .Lfalse
+
 .Llt_ints:
     cmp %rsi, %rdi
     jl .Ltrue
@@ -474,6 +462,7 @@ runtime_ge:
     ucomisd %xmm1, %xmm0
     jae .Ltrue
     jmp .Lfalse
+
 .Lge_ints:
     cmp %rsi, %rdi
     jge .Ltrue
@@ -499,6 +488,7 @@ runtime_le:
     ucomisd %xmm1, %xmm0
     jbe .Ltrue
     jmp .Lfalse
+
 .Lle_ints:
     cmp %rsi, %rdi
     jle .Ltrue
@@ -516,7 +506,6 @@ runtime_le:
 
 .global runtime_and
 runtime_and:
-    # RDI & RSI
     mov %rdi, %rax
     and %rsi, %rax
     ret
@@ -529,27 +518,20 @@ runtime_or:
 
 .global runtime_not
 runtime_not:
-    # NOT only cares about RSI (Right operand in our parser hack)
     mov %rsi, %rax
-    xor $2, %rax        # Flip bit 1 (1->3, 3->1)
+    xor $2, %rax
     ret
 
 .global runtime_to_int
 runtime_to_int:
     push %rbp
     mov %rsp, %rbp
-
     mov %rdi, %rax
     test $1, %rax
-    jnz .ret_int     # Return as-is (already an int)
-
-    # Check the VM Object Type Header!
-    # Data Pointers have their type located 8 bytes before the pointer.
+    jnz .ret_int
     mov -8(%rdi), %rcx
     cmp $1, %rcx
-    je .parse_string # Type 1 = String! Let's parse it!
-
-    # Otherwise, assume it's a Float and fallback to old logic
+    je .parse_string
     call get_double_value
     cvttsd2siq %xmm0, %rax
     shl $1, %rax
@@ -557,45 +539,36 @@ runtime_to_int:
     jmp .ret_int
 
 .parse_string:
-    xor %rax, %rax      # Result Accumulator = 0
-    xor %r9, %r9        # Sign Flag = 0 (positive)
-    xor %rcx, %rcx      # String Index = 0
-    mov $10, %r8        # Base 10 multiplier
-
-    # Check for negative sign on the first character
+    xor %rax, %rax
+    xor %r9, %r9
+    xor %rcx, %rcx
+    mov $10, %r8
     movzx (%rdi), %rdx
     cmp $'-', %rdx
     jne .ps_loop
-    mov $1, %r9         # Set Sign Flag to 1 (negative)
-    inc %rcx            # Skip the '-' character
+    mov $1, %r9
+    inc %rcx
 
 .ps_loop:
-    movzx (%rdi, %rcx), %rdx  # Read 1 character
+    movzx (%rdi, %rcx), %rdx
     test %rdx, %rdx
-    jz .ps_done               # If NULL terminator, we are done
-
-    # Ensure character is between '0' and '9'
+    jz .ps_done
     cmp $'0', %rdx
     jl .ps_done
     cmp $'9', %rdx
     jg .ps_done
-
-    # Convert ASCII to Int: Accumulator = (Accumulator * 10) + (Char - '0')
     sub $'0', %rdx
     imul %r8, %rax
     add %rdx, %rax
-
     inc %rcx
     jmp .ps_loop
 
 .ps_done:
-    # Apply negative sign if necessary
     test %r9, %r9
     jz .ps_tag
     neg %rax
 
 .ps_tag:
-    # Tag the final integer for the Newton VM!
     shl $1, %rax
     or $1, %rax
 
@@ -607,13 +580,10 @@ runtime_to_int:
 runtime_to_float:
     push %rbp
     mov %rsp, %rbp
-
     test $1, %rdi
     jz .is_ptr
-
-    sar $1, %rdi          # Untag
-    cvtsi2sd %rdi, %xmm0  # Convert to Double
-
+    sar $1, %rdi
+    cvtsi2sd %rdi, %xmm0
     call newton_box_float
     leave
     ret
@@ -627,57 +597,46 @@ runtime_to_float:
 runtime_xor:
     mov %rdi, %rax
     xor %rsi, %rax
-    # Newton Integer Tags end in 1. (A | 1) ^ (B | 1) ends in 0.
-    # We MUST retag it with an OR instruction!
     or $1, %rax
     ret
 
 .global runtime_random
 runtime_random:
     push %rbp; mov %rsp, %rbp; sub $16, %rsp
-
-    # 1. Untag the max boundary limit
     sar $1, %rdi
     cmp $0, %rdi
-    jle .Lrand_zero         # If limit <= 0, return 0
-
-    # Save the un-tagged limit
+    jle .Lrand_zero
     mov %rdi, -16(%rbp)
-
-    mov $318, %rax          # syscall: getrandom
-    lea -8(%rbp), %rdi      # buf: point to local stack variable
-    mov $8, %rsi            # buflen: 8 bytes (64-bit)
-    mov $0, %rdx            # flags: 0
+    mov $318, %rax
+    lea -8(%rbp), %rdi
+    mov $8, %rsi
+    mov $0, %rdx
     syscall
 
     mov -8(%rbp), %rax
-
     btr $63, %rax
-
-    xor %rdx, %rdx          # Clear RDX for division
-    mov -16(%rbp), %rcx     # Move our limit into RCX
-    div %rcx                # Divides RDX:RAX by RCX. Remainder goes to RDX.
-
-    mov %rdx, %rax          # Move remainder to RAX
-    shl $1, %rax            # Shift left
-    or $1, %rax             # Set bit 0 (Newton Integer Tag)
+    xor %rdx, %rdx
+    mov -16(%rbp), %rcx
+    div %rcx
+    mov %rdx, %rax
+    shl $1, %rax
+    or $1, %rax
     leave; ret
 
 .Lrand_zero:
-    mov $1, %rax            # Tagged integer 0
+    mov $1, %rax
     leave; ret
-
 
 .global runtime_mod
 runtime_mod:
     push %rbp; mov %rsp, %rbp
-    sar $1, %rdi      # Untag integer A
-    sar $1, %rsi      # Untag integer B
+    sar $1, %rdi
+    sar $1, %rsi
     mov %rdi, %rax
     cqo
-    idiv %rsi         # Hardware division (Remainder automatically goes to %rdx)
-    mov %rdx, %rax    # Move remainder to return register
-    shl $1, %rax      # Re-tag as Newton Integer
+    idiv %rsi
+    mov %rdx, %rax
+    shl $1, %rax
     or $1, %rax
     leave; ret
 
@@ -686,22 +645,22 @@ runtime_shr:
     push %rbp; mov %rsp, %rbp
     sar $1, %rdi
     sar $1, %rsi
-    mov %rsi, %rcx    # Shift amount must be in %cl
+    mov %rsi, %rcx
     mov %rdi, %rax
-    sar %cl, %rax     # Hardware Shift Right
-    shl $1, %rax      # Re-tag
+    sar %cl, %rax
+    shl $1, %rax
     or $1, %rax
     leave; ret
 
 .global runtime_shl
 runtime_shl:
     push %rbp; mov %rsp, %rbp
-    sar $1, %rdi      # Untag Integer A
-    sar $1, %rsi      # Untag Integer B
-    mov %rsi, %rcx    # Shift amount MUST be placed in the %cl register
+    sar $1, %rdi
+    sar $1, %rsi
+    mov %rsi, %rcx
     mov %rdi, %rax
-    shl %cl, %rax     # Hardware Shift Left
-    shl $1, %rax      # Re-tag as a Newton Integer
+    shl %cl, %rax
+    shl $1, %rax
     or $1, %rax
     leave; ret
 
@@ -709,8 +668,6 @@ runtime_shl:
 newton_to_int:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lnti_zero
-
-    # 1. Check String Type (Offset -8)
     mov -8(%rdi), %rcx
     cmp $1, %rcx; je .Lnti_type1
     cmp $5, %rcx; je .Lnti_type5
@@ -723,23 +680,21 @@ newton_to_int:
     jmp .Lnti_ret
 
 .Lnti_type1:
-    mov %rdi, %rsi      # Type 1: Char pointer is the string itself
+    mov %rdi, %rsi
     xor %r8, %r8
-.Lnti_t1_len:           # Find length using null-terminator
+.Lnti_t1_len:
     cmpb $0, (%rsi, %r8); je .Lnti_parse
     inc %r8; jmp .Lnti_t1_len
 
 .Lnti_type5:
-    mov 0(%rdi), %rsi   # Type 5: Raw char pointer is at offset 0
-    mov 8(%rdi), %r8    # Type 5: Exact length is at offset 8
+    mov 0(%rdi), %rsi
+    mov 8(%rdi), %r8
 
 .Lnti_parse:
-    xor %rax, %rax      # Result = 0
-    xor %r9, %r9        # Index = 0
-    xor %r10, %r10      # Sign = 0 (Positive)
+    xor %rax, %rax
+    xor %r9, %r9
+    xor %r10, %r10
     test %r8, %r8; jz .Lnti_zero
-
-    # Check for Negative Sign '-'
     cmpb $45, (%rsi, %r9)
     jne .Lnti_loop
     mov $1, %r10
@@ -748,41 +703,35 @@ newton_to_int:
 .Lnti_loop:
     cmp %r8, %r9; jge .Lnti_done
     movzx (%rsi, %r9), %rcx
-
-    # Verify character is between '0' (48) and '9' (57)
     cmp $48, %rcx; jl .Lnti_done
     cmp $57, %rcx; jg .Lnti_done
-
-    sub $48, %rcx       # Convert ASCII to integer
-    imul $10, %rax      # Multiply current result by 10
-    add %rcx, %rax      # Add new digit
-
+    sub $48, %rcx
+    imul $10, %rax
+    add %rcx, %rax
     inc %r9
     jmp .Lnti_loop
 
 .Lnti_done:
     test %r10, %r10; jz .Lnti_ret
-    neg %rax            # Apply negative sign if needed
+    neg %rax
 .Lnti_ret:
-    shl $1, %rax        # Re-tag as a Newton Integer
+    shl $1, %rax
     or $1, %rax
     leave; ret
 
 .Lnti_zero:
-    mov $1, %rax        # Tagged 0
+    mov $1, %rax
     leave; ret
 
 .global newton_sizeof
 newton_sizeof:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lns_zero
-
     mov -8(%rdi), %rcx
-
     cmp $1, %rcx; je .Lns_type1
-    cmp $2, %rcx; je .Lns_type3     # Route Maps
-    cmp $3, %rcx; je .Lns_type3     # Route Arrays
-    cmp $5, %rcx; je .Lns_type5     # Route Slices
+    cmp $2, %rcx; je .Lns_type3
+    cmp $3, %rcx; je .Lns_type3
+    cmp $5, %rcx; je .Lns_type5
     jmp .Lns_zero
 
 .Lns_type1:
@@ -812,7 +761,7 @@ newton_sizeof:
 newton_inc:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jnz .Lni_do
-    mov $1, %rdi            # [FIX] Coalesce NULL loop counter to Tagged 0
+    mov $1, %rdi
 .Lni_do:
     sar $1, %rdi
     inc %rdi

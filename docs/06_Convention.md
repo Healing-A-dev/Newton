@@ -6,8 +6,6 @@ The Newton compiler is completely agnostic to how you format or case your code. 
 
 All user-defined functions and macros should use **lower camelCase**.
 
-> **Note:** The sole exception is the Standard Library, which uses **PascalCase** along with a `Std_` prefix to clearly distinguish native system calls from user-defined logic.
-
 ```asm
 ; User-defined function (lower camelCase)
 fun calculateTotal: @args a, b

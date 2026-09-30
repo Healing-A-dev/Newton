@@ -30,23 +30,23 @@ newton_init_runtime:
 file_open:
     push %rbp; mov %rsp, %rbp
     sub $64, %rsp; and $-16, %rsp
-    sar $1, %rdi  # Untag path
-    sar $1, %rsi  # Untag flags (0=read, 577=write, 1089=append)
+    sar $1, %rdi
+    sar $1, %rsi
 
-    mov $0x80000000, %rdx # Default: GENERIC_READ
-    mov $3, %r10          # Default: OPEN_EXISTING
+    mov $0x80000000, %rdx
+    mov $3, %r10
 
     cmp $577, %rsi
     jne .Lcheck_append
-    mov $0x40000000, %rdx # GENERIC_WRITE
-    mov $2, %r10          # CREATE_ALWAYS
+    mov $0x40000000, %rdx
+    mov $2, %r10
     jmp .Ldo_open
 
 .Lcheck_append:
     cmp $1089, %rsi
     jne .Ldo_open
-    mov $0x0004, %rdx     # FILE_APPEND_DATA
-    mov $4, %r10          # OPEN_ALWAYS
+    mov $0x0004, %rdx
+    mov $4, %r10
 
 .Ldo_open:
     mov %rdi, %rcx
@@ -70,22 +70,19 @@ file_open:
 file_write:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12
     sub $48, %rsp; and $-16, %rsp
-
     sar $1, %rdi
-    mov %rdi, %rcx    # Arg 1: hFile
-
+    mov %rdi, %rcx
     mov %rsi, %rbx
     mov -8(%rbx), %rax
     cmp $5, %rax
     jne .Lfw_ok
-    mov 0(%rbx), %rbx # Resolve slice view
-.Lfw_ok:
-    mov %rbx, %rdx    # Arg 2: Buffer
+    mov 0(%rbx), %rbx
 
+.Lfw_ok:
+    mov %rbx, %rdx
     push %rcx; push %rdx
     mov %rsi, %rdi; call string_len; mov %rax, %r8
     pop %rdx; pop %rcx
-
     lea 40(%rsp), %r9
     movq $0, 32(%rsp)
     call WriteFile
@@ -99,19 +96,17 @@ file_write:
 file_read:
     push %rbp; mov %rsp, %rbp; push %r12; push %r13
     sub $48, %rsp; and $-16, %rsp
-
     sar $1, %rdi
     sar $1, %rsi
-    mov %rdi, %r12  # hFile
-    mov %rsi, %r13  # Length
-
+    mov %rdi, %r12
+    mov %rsi, %r13
     mov %r13, %rdi
     add $9, %rdi
     call _malloc
+
     movq $1, 0(%rax)
     add $8, %rax
     mov %rax, %rbx
-
     mov %r12, %rcx
     mov %rbx, %rdx
     mov %r13, %r8
@@ -132,28 +127,28 @@ file_close:
     sar $1, %rdi
     mov %rdi, %rcx
     call CloseHandle
-    mov $3, %rax # Return True
+
+    mov $3, %rax
     leave; ret
 
 .global read_file
 read_file:
     push %rbp; mov %rsp, %rbp; push %r14
     sub $48, %rsp; and $-16, %rsp
-
-    mov %rdi, %r14 # Save Path
+    mov %rdi, %r14
     call sys_file_size
-    mov %rax, %r12 # Save Size
 
+    mov %rax, %r12
     mov %r14, %rdi
-    mov $1, %rsi   # 0 un-tagged
+    mov $1, %rsi
     call file_open
-    mov %rax, %r13 # Save FD
 
+    mov %rax, %r13
     mov %r13, %rdi
     mov %r12, %rsi
     call file_read
-    mov %rax, %rbx # Save Content
 
+    mov %rax, %rbx
     mov %r13, %rdi
     call file_close
 
@@ -165,17 +160,16 @@ read_file:
 read_string:
     push %rbp; mov %rsp, %rbp
     sub $64, %rsp; and $-16, %rsp
-
     mov $-10, %rcx
     call GetStdHandle
-    mov %rax, %r12     # Get stdin handle
 
+    mov %rax, %r12
     mov $1033, %rdi
     call _malloc
+
     movq $1, 0(%rax)
     add $8, %rax
     mov %rax, %rbx
-
     mov %r12, %rcx
     mov %rbx, %rdx
     mov $1024, %r8
@@ -184,8 +178,6 @@ read_string:
     call ReadFile
 
     mov 40(%rsp), %rcx
-
-    # Strip \r\n
     cmp $0, %rcx
     jle .Lrs_done
     cmpb $10, -1(%rbx, %rcx)
@@ -194,6 +186,7 @@ read_string:
     cmpb $13, -1(%rbx, %rcx)
     jne .Lrs_done
     dec %rcx
+
 .Lrs_done:
     movb $0, (%rbx, %rcx)
     mov %rbx, %rax

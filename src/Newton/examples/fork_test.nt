@@ -1,11 +1,10 @@
-using std::IO
-using std::Web
-using std::Process
-using std::File
-using std::System
+using std::io
+using std::web
+using std::process
+using std::file
+using std::system
 
-; --- Robust Parser (Using ASCII 32 for Space) ---
-fn parse_path:
+fun parse_path:
     @args req
     set i: 0
     set length: sizeof $req
@@ -32,58 +31,48 @@ fn parse_path:
     if $spaces_found < 2:
         return "/"
     end
-
     set path_len: $_end - $start
     return substring($req, $start, $path_len)
 end
 
-; --- Request Handler (Runs in Child Process) ---
-fn handle_client:
+fun handle_client:
     @args client
 
-    ; 1. Read Request
-    set req: Web.recieve $client, 4096
-
-    ; Chrome/Browsers send empty "Keep-Alive" checks; ignore them safely
+    set req: web.recieve $client, 4096
     if sizeof ($req) == 0:
-        Web.close $client
+        web.close $client
         return 0
     end
 
-    ; 2. Parse
     set path: parse_path $req
-    set pid: Process.id(0)
+    set pid: process.id(0)
 
-    ; Log to console (safe because print is now polymorphic)
-    IO.println "[Child PID: " << string($pid) << "] Request: " << $path
+    @println "[Child PID: " << (string $pid) << "] Request: " << $path
 
-    ; 3. Router
     set status: "404 Not Found"
     set body: "<h1>404 Not Found</h1>"
     set content_type: "text/html"
 
     if $path == "/":
         status: "200 OK"
-        body: "<h1>Newton Fork Server</h1><p>Served by Process ID: " << string($pid) << "</p>"
+        body: "<h1>Newton Fork Server</h1><p>Served by Process ID: " << (string $pid) << "</p>"
     end
 
     if $path == "/api/status":
         status: "200 OK"
         content_type: "application/json"
-        body: "{ 'status': 'running', 'pid': " << string($pid) << " }"
+        body: "{ 'status': 'running', 'pid': " << (string $pid) << " }"
     end
 
-    ; 4. File Serving
     ; Try to read local file if path matches (e.g., /index.html)
     if $path == "/index.html":
-        set file_data: File.readEntireFile "index.html"
+        set file_data: file.readEntireFile "index.html"
         if sizeof($file_data) > 0:
             status: "200 OK"
             body: $file_data
         end
     end
 
-    ; 5. Construct Response
     set content_len: sizeof ($body)
     set headers: "HTTP/1.1 " << $status << "\r\n"
     headers: $headers << "Content-Type: " << $content_type << "\r\n"
@@ -91,39 +80,30 @@ fn handle_client:
     headers: $headers << "Connection: close\r\n\r\n"
 
     set full_response: $headers << $body
-
-    ; 6. Send & Exit
-    Web.send $client, $full_response
-    Web.close $client
+    web.send $client, $full_response
+    web.close $client
 end
 
-; --- Main Server Loop ---
-fn main:
-    IO.println "--- Newton Forking HTTPD ---"
-    IO.println "Parent PID: " << string(Process.id(0))
+fun main:
+    @println "--- Newton Forking HTTPD ---"
+    @println "Parent PID: " << string(process.id(0))
 
-    set server: Web.new $Web.socket
-    Web.bind $server, 8080
-    Web.listen $server
-    IO.println "Listening on 0.0.0.0:8080..."
+    set server: web.new $web.socket
+    web.bind $server, 8080
+    web.listen $server
+    @println "Listening on 0.0.0.0:8080..."
 
     while 1 == 1:
-        ; 1. Accept Connection (Blocking)
-        set client: Web.accept $server
-
-        ; 2. Fork Process
-        ; Returns 0 to Child, ChildPID to Parent
-        set pid: Process.fork()
-
+        set client: web.accept $server
+        set pid: process.fork()
         if $pid == 0:
             ; --- CHILD PROCESS ---
-            Web.close $server   ; Child doesn't need listener
+            web.close $server
             handle_client $client
-            Process.exit 0      ; Die after handling (prevents zombies running main loop)
+            process.exit 0
         else:
             ; --- PARENT PROCESS ---
-            Web.close $client   ; Parent doesn't need connection (Child has a copy)
-            ; Parent loops back immediately to accept next connection
+            web.close $client
         end
     end
 end

@@ -11,7 +11,7 @@ using std::File
 
 fun main:
     ; Standard library functions require their explicit namespace
-    set fd: File.Std_Open "config.txt", 0
+    set fd: File.open "config.txt", 0
 end
 ```
 
@@ -77,7 +77,7 @@ The prelude automatically imports core modules (such as `IO`, `String`, and `Fil
 ```asm
 fun main:
     ; Without the prelude:
-    set data: File.Std_ReadEntireFile "data.txt"
+    set data: File.readEntireFile "data.txt"
 
     ; With the prelude's global wrappers:
     set data: readfile "data.txt"

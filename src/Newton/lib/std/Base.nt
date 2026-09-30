@@ -2,11 +2,11 @@
 ; Description: Base module for the newton standard library (automatically included)
 ; Date: April 30th, 2026 *
 
-using std::IO
-using std::File
-using std::String
-using std::Collection
-using std::System
+using std::io
+using std::file
+using std::string
+using std::collection
+using std::system
 
 ; ------------------------------------------
 ; Global Variables
@@ -60,7 +60,7 @@ defmacro println:
 	if (sizeof $M_ARGV) > 0:
 		str_val: $M_ARGV{0}
 	end
-    if (String.Has (string $str_val), "{}"):
+    if (string.has (string $str_val), "{}"):
 		set [start, rep_counter]: [0, 0]
         set search: substring $str_val, $start, 2
         set arg_length: sizeof $M_ARGV
@@ -71,10 +71,10 @@ defmacro println:
 					if (typeof $M_ARGV{$rep_counter}) == "map" or (typeof $M_ARGV{$rep_counter}) == "list":
 						return ["error", "Cannot interpolate type '" << (typeof $M_ARGV{$rep_counter}) << "'"]
 					end
-					set chars: String.Std_Split $str_val, ""
+					set chars: string.split $str_val, ""
 					chars{$start}: string $M_ARGV{$rep_counter}
 					chars{$start + 1}: ""
-					str_val: Collection.Join $chars, ""
+					str_val: collection.join $chars, ""
 				end
         	end
         	start: $start + 1
@@ -82,13 +82,13 @@ defmacro println:
         end
 
 		if $arg_length - 1 > $rep_counter:
-			IO.Std_Print $str_val
+			io.print $str_val
 			for &s, $rep_counter + 1, $arg_length, 1:
-				IO.Std_Print " " << $M_ARGV{$s}
+				io.print " " << $M_ARGV{$s}
 			end
-			IO.Std_Print "\n"
+			io.print "\n"
 		else:
-			IO.Std_Println $str_val
+			io.println $str_val
 		end
 		return ["ok", 1]
     end
@@ -96,18 +96,18 @@ defmacro println:
     ; No Interpolation (Regular Print) [Base]
 	set arg_length: sizeof $M_ARGV
 	if $arg_length < 2:
-		IO.Std_Println $str_val
+		io.println $str_val
 	else:
 	;	[Variadic]
-		IO.Std_Print "" << (string $str_val) << " "
+		io.print "" << (string $str_val) << " "
 		for &s, 1, $arg_length, 1:
 			if $s != $arg_length - 1:
 				match (typeof $M_ARGV{$s}):
 					"string" -> prints $M_ARGV{$s}
 					"number" -> prints $M_ARGV{$s}
 					"float"  -> prints $M_ARGV{$s}
-					"list"   -> IO.Std_Print $M_ARGV{$s}
-					"map"    -> IO.Std_Print $M_ARGV{$s}
+					"list"   -> io.print $M_ARGV{$s}
+					"map"    -> io.print $M_ARGV{$s}
 				end
 				prints " "
 			else:
@@ -115,8 +115,8 @@ defmacro println:
 					"string" -> prints $M_ARGV{$s}, "\n"
 					"number" -> prints $M_ARGV{$s}, "\n"
 					"float"  -> prints $M_ARGV{$s}, "\n"
-					"list"   -> IO.Std_Println $M_ARGV{$s}
-					"map"    -> IO.Std_Println $M_ARGV{$s}
+					"list"   -> io.println $M_ARGV{$s}
+					"map"    -> io.println $M_ARGV{$s}
 				end
 			end
 		end
@@ -129,7 +129,7 @@ defmacro print:
 	if (sizeof $M_ARGV) > 0:
 		str_val: $M_ARGV{0}
 	end
-    if (String.Has (string $str_val), "{}"):
+    if (string.has (string $str_val), "{}"):
 		set [start, rep_counter]: [0, 0]
         set search: substring $str_val, $start, 2
         set arg_length: sizeof $M_ARGV
@@ -140,10 +140,10 @@ defmacro print:
 					if (typeof $M_ARGV{$rep_counter}) == "map" or (typeof $M_ARGV{$rep_counter}) == "list":
 						return ["error", "Cannot interpolate type '" << (typeof $M_ARGV{$rep_counter}) << "'"]
 					end
-					set chars: String.Std_Split $str_val, ""
+					set chars: string.split $str_val, ""
 					chars{$start}: string $M_ARGV{$rep_counter}
 					chars{$start + 1}: ""
-					str_val: Collection.Join $chars, ""
+					str_val: collection.join $chars, ""
 				end
         	end
         	start: $start + 1
@@ -151,12 +151,12 @@ defmacro print:
         end
 
 		if $arg_length - 1 > $rep_counter:
-			IO.Std_Print $str_val
+			io.print $str_val
 			for &s, $rep_counter + 1, $arg_length, 1:
-				IO.Std_Print " " << $M_ARGV{$s}
+				io.print " " << $M_ARGV{$s}
 			end
 		else:
-			IO.Std_Print $str_val
+			io.print $str_val
 		end
 		return ["ok", 1]
     end
@@ -164,18 +164,18 @@ defmacro print:
     ; No Interpolation (Regular Print) [Base]
 	set arg_length: sizeof $M_ARGV
 	if $arg_length < 2:
-		IO.Std_Print $str_val
+		io.print $str_val
 	else:
 	;	[Variadic]
-		IO.Std_Print "" << (string $str_val) << " "
+		io.print "" << (string $str_val) << " "
 		for &s, 1, $arg_length, 1:
 			if $s != $arg_length - 1:
 				match (typeof $M_ARGV{$s}):
 					"string" -> prints $M_ARGV{$s}
 					"number" -> prints $M_ARGV{$s}
 					"float"  -> prints $M_ARGV{$s}
-					"list"   -> IO.Std_Print $M_ARGV{$s}
-					"map"    -> IO.Std_Print $M_ARGV{$s}
+					"list"   -> io.print $M_ARGV{$s}
+					"map"    -> io.print $M_ARGV{$s}
 				end
 				prints " "
 			else:
@@ -183,8 +183,8 @@ defmacro print:
 					"string" -> prints $M_ARGV{$s}
 					"number" -> prints $M_ARGV{$s}
 					"float"  -> prints $M_ARGV{$s}
-					"list"   -> IO.Std_Print $M_ARGV{$s}
-					"map"    -> IO.Std_Print $M_ARGV{$s}
+					"list"   -> io.print $M_ARGV{$s}
+					"map"    -> io.print $M_ARGV{$s}
 				end
 			end
 		end
@@ -197,9 +197,9 @@ end
 ; ------------------------------------------
 defmacro readln:
 	if (sizeof $M_ARGV) < 1:
-		return @capture IO.Std_Readln
+		return @capture io.readln
 	else:
-		return @capture IO.Std_Prompt $M_ARGV{0}
+		return @capture io.prompt $M_ARGV{0}
 	end
 end
 
@@ -216,71 +216,77 @@ end
 ; Global File Function Wrappers
 ; ------------------------------------------
 fun fopen: @args file, flags
-	return @capture File.Std_Open $file, $flags
+	set flag: $flags
+	match $flag:
+		"r" -> flag: $fmRead
+		"w" -> flag: $fmWrite
+		"a" -> flag: $fmAppend
+	end
+	return @capture file.open $file, $flag
 end
 
 fun fwrite: @args fd, data
-	return @capture File.Std_Write $fd, $data
+	return @capture file.write $fd, $data
 end
 
 fun fwriteBytes: @args fd, data
-	return @capture File.Std_WriteBytes $fd, $data
+	return @capture file.writeBytes $fd, $data
 end
 
 fun fclose: @args fd
-	return @capture File.Std_Close $fd
+	return @capture file.close $fd
 end
 
 fun fsizeof: @args file
-	return @capture File.Std_Sizeof $file
+	return @capture file.sizeof $file
 end
 
 fun readfile: @args file
-	return @capture File.Std_ReadEntireFile $file
+	return @capture file.readEntireFile $file
 end
 
 fun fgets: @args fd, len
-	return @capture File.Std_Read $fd, $len
+	return @capture file.read $fd, $len
 end
 
 fun fileExists: @args file
-	return @capture File.Std_Exists $file
+	return @capture file.exists $file
 end
 
 fun deleteFile: @args file
-	return @capture File.Std_Delete $file
+	return @capture file.delete $file
 end
 
 fun newDirectory: @args path
-	return @capture File.Std_NewDirectory $path
+	return @capture file.newDirectory $path
 end
 
 ; ------------------------------------------
 ; Global Collection Functions/Macros
 ; ------------------------------------------
 fun list: @args val
-	return @capture Collection.Std_ToList $val
+	return @capture collection.toList $val
 end
 
 fun map: @args val
-	return @capture Collection.Std_ToMap $val
+	return @capture collection.toMap $val
 end
 
 fun push: @args map_list, val
-	return @capture Collection.Std_Push $map_list, $val
+	return @capture collection.push $map_list, $val
 end
 
 fun pop: @args map_list
-	return @capture Collection.Std_Pop $map_list
+	return @capture collection.pop $map_list
 end
 
 fun delete: @args map_list, key
-	return @capture Collection.Std_Remove $map_list, $key
+	return @capture collection.remove $map_list, $key
 end
 
 defmacro List:
-	IO.Std_Println "Broken currently [WIP]"
-	;return Collection.Std_MallocArray $M_ARGV{0}
+	io.println "Broken currently [WIP]"
+	;return collection.mallocArray $M_ARGV{0}
 	return ["ok", []]
 end
 
@@ -288,19 +294,29 @@ end
 ; Global System Functions (Usable but not practical)
 ; ------------------------------------------
 fun Std_Base_newton_get_argc:
-	return ["ok", (System.Std_Argc 0)]
+	return ["ok", (system.argc 0)]
 end
 
 fun Std_Base_newton_get_argv:
 	set system_args: []
 	for &arg, 0, ($argc - 1), 1:
-	  system_args{$arg}: System.Std_Argv $arg
+	  system_args{$arg}: system.argv $arg
 	end
 	return ["ok", $system_args]
 end
 
+fun Std_Base_newton_update_argv: @args base_name
+	set args: [$base_name]
+	for &idx, 0, ($argc - 1), 1:
+		args{$idx + 1}: $argv{$idx}
+	end
+	argv: $args
+	argc: (sizeof $args)
+	return ["ok", 1]
+end
+
 defmacro quit:
-	System.Std_Exit $M_ARGV{0}
+	system.exit $M_ARGV{0}
 end
 ; ------------------------------------------
 ; Global String Functions/Macros
@@ -315,7 +331,7 @@ defmacro split:
 	elseif (sizeof $M_ARGV) > 2:
 		die "Invalid number of argmuents for macro 'split'; Max 2, got " << (string (sizeof $M_ARGV)), 1
 	end
-	set capture: @capture String.Std_Split $M_ARGV{0}, $delim
+	set capture: @capture string.split $M_ARGV{0}, $delim
 	if @isError $capture:
 		(die (@getError $capture), 1)
 	end
@@ -332,7 +348,7 @@ defmacro splitToMap:
 	elseif (sizeof $M_ARGV) > 2:
 		die "Invalid number of argmuents for macro 'splitToMap'; Max 2, got " << (string (sizeof $M_ARGV)), 1
 	end
-	set capture: @capture String.Std_SplitToMap $M_ARGV{0}, $delim
+	set capture: @capture string.splitToMap $M_ARGV{0}, $delim
 	if @isError $capture:
 		(die (@getError $capture), 1)
 	end
@@ -341,7 +357,7 @@ end
 
 ; defmacro splitToMap:
 ; 	set delim: $M_ARGV{1}
-; 	return @capture String.Std_SplitToMap $M_ARGV{0}, $delim
+; 	return @capture string.splitToMap $M_ARGV{0}, $delim
 ; end
 
 ; ------------------------------------------

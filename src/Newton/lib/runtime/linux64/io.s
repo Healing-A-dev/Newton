@@ -16,13 +16,11 @@
 .global print_string
 print_string:
     push %rbp; mov %rsp, %rbp; push %rbx
-
     test %rdi, %rdi; jnz .Lps_valid
-    mov $1, %rdi                      # [FIX] Coalesce NULL to Tagged 0 for printing!
+    mov $1, %rdi
 
 .Lps_valid:
     test $1, %rdi; jnz .Lprint_int
-
     mov -8(%rdi), %rax
     cmp $1, %rax; je .Lprint_str
     cmp $4, %rax; je .Lprint_float
@@ -31,12 +29,11 @@ print_string:
 
 .Lprint_int: call int_to_string; mov %rax, %rdi; jmp .Lprint_str
 .Lprint_float: call float_to_string; mov %rax, %rdi; jmp .Lprint_str
-
 .Lprint_view:
     mov $1, %rax
-    mov 8(%rdi), %rdx      # Length is stored at offset 8
-    mov 0(%rdi), %rsi      # Raw char pointer is stored at offset 0
-    mov $1, %rdi           # stdout
+    mov 8(%rdi), %rdx
+    mov 0(%rdi), %rsi
+    mov $1, %rdi
     syscall
     jmp .Lprint_done
 
@@ -51,7 +48,6 @@ print_string:
 .global read_string
 read_string:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12
-
     mov $137, %rdi
     call _malloc
     mov %rax, %rbx
@@ -66,12 +62,9 @@ read_string:
     lea (%rbx, %r12), %rsi
     mov $1, %rdx
     syscall
-
-    # Check EOF or Error
     cmp $1, %rax
     jne .Lrs_done
 
-    # Check Newline
     movb (%rbx, %r12), %al
     cmp $10, %al
     je .Lrs_done
@@ -82,15 +75,14 @@ read_string:
 
 .Lrs_done:
     movb $0, (%rbx, %r12)
-    mov %rbx, %rax      # Return Data Ptr
-
+    mov %rbx, %rax
     pop %r12; pop %rbx; leave; ret
 
 # --- DYNAMIC READ FILE ---
 .global read_file
 read_file:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12; push %r13
-    mov %rdi, %rbx # Path (Data Ptr)
+    mov %rdi, %rbx
     mov $2, %rax; mov %rbx, %rdi; mov $0, %rsi; mov $0, %rdx; syscall
     cmp $0, %rax; jl .Lread_fail
     mov %rax, %rbx
@@ -100,11 +92,11 @@ read_file:
     mov %r12, %rdi; add $9, %rdi; call _malloc
     mov %rax, %r13
     movq $1, 0(%r13)
-    add $8, %r13       # Data Ptr
+    add $8, %r13
     mov $0, %rax; mov %rbx, %rdi; mov %r13, %rsi; mov %r12, %rdx; syscall
     movb $0, (%r13, %r12)
     mov $3, %rax; mov %rbx, %rdi; syscall
-    mov %r13, %rax     # Return Data Ptr
+    mov %r13, %rax
     pop %r13; pop %r12; pop %rbx; leave; ret
 .Lread_fail:
     mov $9, %rdi; call _malloc; movq $1, 0(%rax); add $8, %rax; movb $0, (%rax); leave; ret
@@ -141,16 +133,16 @@ exit_program: sar $1, %rdi; mov $60, %rax; syscall; ret
 
 print_raw_os:
     push %rbp; mov %rsp, %rbp
-    mov %rdi, %rsi      # Move string pointer to RSI for sys_write
-    xor %rdx, %rdx      # Set length counter to 0
+    mov %rdi, %rsi
+    xor %rdx, %rdx
 .Lpro_len:
-    cmpb $0, (%rsi, %rdx) # Check for null terminator
+    cmpb $0, (%rsi, %rdx)
     je .Lpro_do
     inc %rdx
     jmp .Lpro_len
 .Lpro_do:
-    mov $1, %rax        # Syscall 1: sys_write
-    mov $1, %rdi        # File Descriptor 1: stdout
+    mov $1, %rax
+    mov $1, %rdi
     syscall
     leave; ret
 
@@ -159,10 +151,10 @@ sys_log_err:
     push %rbp; mov %rsp, %rbp
     push %r12; push %r13; push %r14; push %r15
 
-    mov %rdi, %r12   # Arg 1: Filename
-    mov %rsi, %r13   # Arg 2: Line Number
-    mov %rdx, %r14   # Arg 3: The Source Code Line
-    mov %rcx, %r15   # Arg 4: The Error Message (Hint)
+    mov %rdi, %r12
+    mov %rsi, %r13
+    mov %rdx, %r14
+    mov %rcx, %r15
 
     lea .Lerr_1(%rip), %rdi; call print_raw_os
     mov %r12, %rdi; call print_string
@@ -185,47 +177,47 @@ sys_log_err:
 .global sys_access
 sys_access:
     push %rbp; mov %rsp, %rbp
-    mov $21, %rax      # syscall 21: access
-    mov $0, %rsi       # mode: F_OK (0) - Check for existence
+    mov $21, %rax
+    mov $0, %rsi
     syscall
-    shl $1, %rax; or $1, %rax  # Tag return code
+    shl $1, %rax; or $1, %rax
     leave; ret
 
 # Create a directory (mkdir)
 .global sys_mkdir
 sys_mkdir:
     push %rbp; mov %rsp, %rbp
-    mov $83, %rax      # syscall 83: mkdir
-    mov $511, %rsi     # mode: 0777 octal (511 decimal) for open permissions
+    mov $83, %rax
+    mov $511, %rsi
     syscall
-    shl $1, %rax; or $1, %rax  # Tag return code
+    shl $1, %rax; or $1, %rax
     leave; ret
 
 # Delete a file (unlink)
 .global sys_unlink
 sys_unlink:
     push %rbp; mov %rsp, %rbp
-    mov $87, %rax      # syscall 87: unlink
+    mov $87, %rax
     syscall
-    shl $1, %rax; or $1, %rax  # Tag return code
+    shl $1, %rax; or $1, %rax
     leave; ret
 
 .global sys_file_size
 sys_file_size:
     push %rbp; mov %rsp, %rbp
-    sar $1, %rdi      # untag File Descriptor
+    sar $1, %rdi
 
-    mov %rdi, %r8     # Save FD in %r8
-    mov $8, %rax      # syscall 8: lseek
-    mov $0, %rsi      # offset 0
-    mov $2, %rdx      # SEEK_END
-    syscall
-
-    mov %rax, %r9     # Save the returned file size in %r9
-    mov %r8, %rdi     # Restore FD
+    mov %rdi, %r8
     mov $8, %rax
     mov $0, %rsi
-    mov $0, %rdx      # SEEK_SET
+    mov $2, %rdx
+    syscall
+
+    mov %rax, %r9
+    mov %r8, %rdi
+    mov $8, %rax
+    mov $0, %rsi
+    mov $0, %rdx
     syscall
 
     mov %r9, %rax

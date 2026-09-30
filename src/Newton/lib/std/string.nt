@@ -1,0 +1,279 @@
+; Filename: string.nt
+; Description: String module for the newton standard library
+; Date: April 30th, 2026 *
+
+; --- STRING LIBRARY ---
+
+fun split: @args str, delim
+    if (typeof $str) != "string":
+        die "In function 'string.split' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+    end
+    set result: []
+    set s_len: sizeof $str
+    set d_len: sizeof $delim
+
+    if $d_len == 0:
+        set i: 0
+        while $i < $s_len:
+            result{(sizeof $result)}: substring $str, $i, 1
+            i: $i + 1
+        end
+        return ["ok", $result]
+    end
+
+    set start: 0
+    set i: 0
+
+    while $i < $s_len:
+        set chunk: substring $str, $i, $d_len
+        if $chunk == $delim:
+            set chunk_len: $i - $start
+            result{(sizeof $result)}: substring $str, $start, $chunk_len
+            i: $i + $d_len
+            start: $i
+        else:
+            i: $i + 1
+        end
+    end
+
+    set final_len: $s_len - $start
+    ; [FIX] Use raw 'substring'
+    result{(sizeof $result)}: substring $str, $start, $final_len
+    return ["ok", $result]
+end
+
+fun splitToMap: @args str, delim
+    if (typeof $str) != "string":
+        die "In function 'string.splitToMap' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+    end
+    set str:   string.reverse $str
+    set delim: string.reverse $delim
+    set result: ()
+    set s_len: sizeof $str
+    set d_len: sizeof $delim
+
+    if $d_len == 0:
+        set i: 0
+        while $i < $s_len:
+            result{(sizeof $result)}: substring $str, $i, 1
+            i: $i + 1
+        end
+        return ["ok", $result]
+    end
+
+    set start: 0
+    set i: 0
+
+    while $i < $s_len:
+        set chunk: substring $str, $i, $d_len
+        if $chunk == $delim:
+            set chunk_len: $i - $start
+            result{(sizeof $result)}: string.reverse (substring $str, $start, $chunk_len)
+            i: $i + $d_len
+            start: $i
+        else:
+            i: $i + 1
+        end
+    end
+
+    set final_len: $s_len - $start
+    result{(sizeof $result)}: string.reverse (substring $str, $start, $final_len)
+    return ["ok", $result]
+end
+
+fun reverse: @args string_val
+  if (typeof $string_val) != "string":
+      die "In function 'string.reverse' | Expected type 'string' for argument #1; got " << (typeof $string_val), 1
+  end
+	set characters: []
+	set reversing_string: ""
+	set length_of_string: sizeof $string_val
+	set _length_of_string: $length_of_string
+
+	while (sizeof $characters) < $length_of_string:
+		set sub_value: substring $string_val, (sizeof $characters), 1
+		characters{(sizeof $characters)}: $sub_value
+	end
+
+	while $length_of_string > 0:
+		reversing_string: $reversing_string << string $characters{$length_of_string - 1}
+		length_of_string: $length_of_string - 1
+	end
+	return ["ok", $reversing_string]
+end
+
+fun sub: @args str_val, _start, _end
+  if (typeof $str_val) != "string":
+      die "In function 'string.sub' | Expected type 'string' for argument #1; got " << (typeof $str_val), 1
+  end
+	set res: substring $str_val, $_start, $_end
+	return ["ok", $res]
+end
+
+fun has: @args str_val, pattern
+    match (typeof $str_val):
+      "number" -> die "In function 'string.has' | Expected type 'string' for argument #1; got " << (typeof $str_val), 1
+      "float"  -> die "In function 'string.has' | Expected type 'string' for argument #1; got " << (typeof $str_val), 1
+    end
+
+    set str_len: sizeof $str_val
+    set pat_len: sizeof $pattern
+    set _start: 0
+
+    if $pat_len > $str_len:
+        return ["ok", 0]
+    end
+
+    set limit: $str_len - $pat_len
+
+    while $_start <= $limit:
+        set chunk: substring $str_val, $_start, $pat_len
+        if $chunk == $pattern:
+            return ["ok", 1]
+        end
+        _start: $_start + 1
+    end
+
+    return ["ok", 0]
+end
+
+fun replace: @args str, pattern, replacement
+    if (typeof $str) != "string":
+        die "In function 'string.replace' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+    end
+    set s_len: sizeof $str
+    set p_len: sizeof $pattern
+    set result: ""
+    set i: 0
+
+    if $p_len == 0:
+        return ["ok", $str]
+    end
+
+    while $i < $s_len:
+        set is_matched: 0
+
+        if ($s_len - $i) >= $p_len:
+            set chunk: substring $str, $i, $p_len
+
+            if $chunk == $pattern:
+                result: $result << $replacement
+                i: $i + $p_len
+                is_matched: 1
+            end
+        end
+
+        if $is_matched == 0:
+            set c: substring $str, $i, 1
+            result: $result << $c
+            i: $i + 1
+        end
+    end
+
+    return ["ok", $result]
+end
+
+fun endsWith: @args str, val
+  if (typeof $str) != "string":
+      die "In function 'string.endsWith' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+  end
+	set data: substring $str, (sizeof $str) - (sizeof $val), (sizeof $str)
+	if $data == $val:
+		return ["ok", 1]
+	end
+	return ["ok", 0]
+end
+
+fun startsWith: @args str, val
+  if (typeof $str) != "string":
+      die "In function 'string.startsWith' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+  end
+	set data: substring $str, 0, (sizeof $val)
+	if $data == $val:
+		return ["ok", 1]
+	end
+	return ["ok", 0]
+end
+
+fun ascii: @args str
+	if (typeof $str) == "string":
+		set asc: __string_ord $str
+		return ["ok", $asc]
+	end
+	return ["ok", 0]
+end
+
+fun stripWhitespace: @args string_value
+	set size: (sizeof $string_value)
+	set [lp, rp]: [0, $size - 1]
+	while 1:
+		if $string_value{$lp} == 32 or $string_value{$lp} == 9: lp: $lp + 1 end
+		if $string_value{$rp} == 32 or $string_value{$lp} == 9: rp: $rp - 1 end
+		if ($string_value{$lp} != 32) and ($string_value{$rp} != 32) and ($string_value{$lp} != 9) and ($string_value{$rp} != 9): break end
+	end
+	return ["ok", (substring $string_value, $lp, ($rp - $lp ) + 1)]
+end
+
+fun char: @args ascii
+  if (typeof $ascii) != "int":
+    die "In function 'string.char' | Expected type 'int' for argument #1; got " << (typeof $ascii), 1
+  end
+	set char: __string_char $ascii
+	return ["ok", $char]
+end
+
+fun find: @args str, val
+  if (typeof $str) != "string":
+      die "In function 'string.find' | Expected type 'string' for argument #1; got " << (typeof $str), 1
+  end
+	if (sizeof $val) > (sizeof $str):
+		return ["ok", 0]
+	end
+
+	set _start: 0
+	set limit: (sizeof $str) - (sizeof $val)
+	set pat_len: sizeof $val
+
+	while $_start <= $limit:
+		set chunk: substring $str, $_start, $pat_len
+		if $chunk == $val:
+		    return ["ok", $val]
+		end
+		_start: $_start + 1
+	end
+
+	return ["ok", 0]
+end
+
+fun chop: @args str_val
+  if (typeof $str_val) != "string":
+      die "In function 'string.chop' | Expected type 'string' for argument #1; got " << (typeof $str_val), 1
+  end
+	; Remove last character from string
+	set chopped_string: substring $str_val, 0, (sizeof $str_val) - 1
+	return ["ok", $chopped_string]
+end
+
+fun lower: @args str
+	set outstr: ""
+	for &idx, 0, (sizeof $str), 1:
+		if $str{$idx} >= 65 and $str{$idx} <= 90:
+			outstr: $outstr << string.char $str{$idx} + 32
+		else:
+			outstr: $outstr << string.char $str{$idx}
+		end
+	end
+	return $outstr
+end
+
+fun upper: @args str
+	set outstr: ""
+	for &idx, 0, (sizeof $str), 1:
+		if $str{$idx} >= 97 and $str{$idx} <= 122:
+			outstr: $outstr << string.char $str{$idx} - 32
+		else:
+			outstr: $outstr << string.char $str{$idx}
+		end
+	end
+	return $outstr
+end

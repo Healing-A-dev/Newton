@@ -1,35 +1,32 @@
-using Std::Web
-using Std::Json
-using Std::Terminal
-using Std::Process
+using std::web
+using std::json
+using std::terminal
+using std::process
 
 
 fun handleRequest: @args client
-	set req: Web.Recieve $client, 4096
+	set req: web.recieve $client, 4096
 
-	| Empty Request
-	if (sizeof $req) == 0: 
-		Web.Close $client
+	; Empty Request
+	if (sizeof $req) == 0:
+		web.close $client
 		return ["ok", 0]
 	end
+	@println $req
 
-	println $req
-
-	
-	Process.Sleep 1
-	Web.Close $client
+	process.sleep 1
+	web.close $client
 end
 
-fun Main:
+fun main:
 	set PORT: 8081
-	set SERVER: Web.New
-	Web.Bind $SERVER, $PORT
-	Web.Listen $SERVER
-
-	| println "Listening on port: " << $PORT
+	set SERVER: web.new
+	web.bind $SERVER, $PORT
+	web.listen $SERVER
+	@println "Listening on port: " << $PORT
 
 	while 1:
-		set CLIENT: Web.Accept $SERVER
+		set CLIENT: web.accept $SERVER
 		handleRequest $CLIENT
 	end
 end

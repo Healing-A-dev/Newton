@@ -2,12 +2,12 @@
 ; Lines of Code: 13
 ; Imports: 1
 
-using Std::Terminal
+using std::terminal
 
 fun main:
   set filename: $argv{0}
   if $filename == 0:
-    @println Terminal.Error "Filename not provided"
+    @println terminal.error "Filename not provided"
     exit 1
   end
 

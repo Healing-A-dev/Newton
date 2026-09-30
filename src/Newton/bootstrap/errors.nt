@@ -32,7 +32,7 @@ fun stripLeadingWhitespace: @args str
 			end
 		end
 	end
-	return (String: (String.Sub $str, $start, (sizeof $str) - $start), Spaces: $count)
+	return (String: (string.sub $str, $start, (sizeof $str) - $start), Spaces: $count)
 end
 
 fun err: @args msg, line, code, hint
@@ -45,13 +45,13 @@ fun err: @args msg, line, code, hint
  	set final_hint: $hint
 
  	if $final_code == "":
- 		if (String.Has $msg, "Unexpected character"):
+ 		if (string.has $msg, "Unexpected character"):
  			final_code: "E001"
  			if $final_hint == "": final_hint: "The lexer encountered an invalid character. Did you make a typo?" end
- 		elseif (String.Has $msg, "Expected") or (String.Has $msg, "Unknown statement"):
+ 		elseif (string.has $msg, "Expected") or (string.has $msg, "Unknown statement"):
  			final_code: "E002"
  			if $final_hint == "": final_hint: "The parser encountred an unexpected token. Check for missing commas, colons, or mismatched/missing " << "brackets, parenthesis, and/or braces." end
- 		elseif (String.Has $msg, "Could not find module"):
+ 		elseif (string.has $msg, "Could not find module"):
  			final_code: "E003"
  			if $final_hint == "": final_hint: "Module resolution failed. Check if the file exists in the correct directory, or verify your import ('using') path." end
  		else:
@@ -74,7 +74,7 @@ fun err: @args msg, line, code, hint
 
  		set line_content: ""
  		if (fileExists $errors.currentCompilingFile):
- 			set lines: String.Std_Split (readfile $errors.currentCompilingFile), "\n"
+ 			set lines: string.split (readfile $errors.currentCompilingFile), "\n"
  			if $line > 0 and $line <= (sizeof $lines):
  				line_content: $lines{$line - 1}
  			end
@@ -86,7 +86,7 @@ fun err: @args msg, line, code, hint
 
  			set trimmed: errors.stripLeadingWhitespace $line_content
  			set space_count: $trimmed{"Spaces"}
- 			set squiggly: (errors.repeat " ", $space_count) << "\x1b[1;31m" << (errors.repeat "^", (Math.Max 1, (sizeof $trimmed{"String"}))) << "\x1b[0m"
+ 			set squiggly: (errors.repeat " ", $space_count) << "\x1b[1;31m" << (errors.repeat "^", (math.max 1, (sizeof $trimmed{"String"}))) << "\x1b[0m"
 
  			@println "  {} | {}", $pad, $squiggly
  		else:

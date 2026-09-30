@@ -1,15 +1,12 @@
-using Std::Web
-using Std::Process
-using Std::Terminal
-using Std::String
-using Std::Json
-using Std::Math
+using std::web
+using std::process
+using std::terminal
+using std::json
 
-| 1. Global Database State
 set db*: ()
 set db_keys*: []
 
-| --- PERSISTENCE ---
+; --- PERSISTENCE ---
 fun save_db:
     set content: ""
     set i: 0
@@ -20,22 +17,22 @@ fun save_db:
         i: $i + 1
     end
 
-    set fd: File.open "db.txt", $File.fmWrite
+    set fd: fopen "db.txt", "w"
     if $fd > 0:
-        File.write $fd, $content
-        File.close $fd
+        fwrite $fd, $content
+        fclose $fd
     end
 end
 
 fun load_db:
-    set fd: File.open "db.txt", 0
+    set fd: fopen "db.txt", "r"
     if $fd < 0:
-        IO.println Terminal.warning "[*] No existing database found. Starting fresh."
+        @println terminal.warning "[*] No existing database found. Starting fresh."
         return
     end
-    File.close $fd
+    fclose $fd
 
-    set content: File.readEntireFile "db.txt"
+    set content: readfile "db.txt"
     if (sizeof $content) == 0:
         return
     end
@@ -47,7 +44,7 @@ fun load_db:
     set parsing_key: 1
 
     while $i < $c_len:
-        set c: String.sub $content, $i, 1
+        set c: string.sub $content, $i, 1
         if $c == "\n":
             if (sizeof $curr_key) > 0:
                 db{$curr_key}: $curr_val
@@ -73,44 +70,42 @@ fun load_db:
         end
         i: $i + 1
     end
-    IO.println Terminal.success "[+] Database loaded! Keys restored: " << (sizeof $db_keys)
+    @println terminal.success "[+] Database loaded! Keys restored: " << (sizeof $db_keys)
 end
 
-| --- TEMPLATE GENERATOR ---
+; --- TEMPLATE GENERATOR ---
 fun ensure_template_html:
-    set fd: File.open "index.html", 0
+    set fd: fopen "index.html", "r"
     if $fd > 0:
-        File.close $fd
+        fclose $fd
         return
     end
 
-    IO.println Terminal.warning "[*] Generating default 'index.html' template..."
-    set fd_write: File.open "index.html", $File.fmWrite
+    @println terminal.warning "[*] Generating default 'index.html' template..."
+    set fd_write: fopen "index.html", "w"
 
     set html: "<!DOCTYPE html><html><head><meta charset='utf-8'><title>Newton Dashboard</title>"
-    html: $html << "<style>body{font-family:sans-serif| margin:40px| background:#1e1e1e| color: white|} "
-    html: $html << "table{width: 100%| border-collapse: collapse| margin-top: 20px| background: #2d2d2d|} "
-    html: $html << "th, td{padding: 12px| border: 1px solid #444| text-align: left|} "
-    html: $html << "th{background-color: #2ecc71| color: #111| font-weight: bold|} "
-    | [NEW] CSS for our delete button
-    html: $html << ".btn-del{background: #ff4757| color: white| padding: 5px 10px| text-decoration: none| border-radius: 4px| font-size: 14px|}</style></head><body>"
+    html: $html << "<style>body{font-family:sans-serif; margin:40px; background:#1e1e1e; color: white;} "
+    html: $html << "table{width: 100%; border-collapse: collapse; margin-top: 20px; background: #2d2d2d;} "
+    html: $html << "th, td{padding: 12px; border: 1px solid #444; text-align: left;} "
+    html: $html << "th{background-color: #2ecc71; color: #111; font-weight: bold;} "
+    html: $html << ".btn-del{background: #ff4757; color: white; padding: 5px 10px; text-decoration: none; border-radius: 4px; font-size: 14px;}</style></head><body>"
     html: $html << "<h1>🗄️ Newton DB Dashboard</h1>"
-    | [NEW] Added Action column
-    html: $html << "<table><tr><th>Key</th><th>Value</th><th style='width: 80px|'>Action</th></tr>"
+    html: $html << "<table><tr><th>Key</th><th>Value</th><th style='width: 80px;'>Action</th></tr>"
     html: $html << "{{table_rows}}"
     html: $html << "</table></body></html>"
 
-    File.write $fd_write, $html
-    File.close $fd_write
+    fwrite $fd_write, $html
+    fclose $fd_write
 end
 
-| --- HTTP ROUTER ---
+; --- HTTP ROUTER ---
 fun handle_request:
     @args client
 
-    set req: Web.recieve $client, 4096
+    set req: web.recieve $client, 4096
     if (sizeof $req) == 0:
-        Web.close $client
+        web.close $client
         return
     end
 
@@ -121,7 +116,7 @@ fun handle_request:
     set state: 0
 
     while $i < $req_len:
-        set c: String.sub $req, $i, 1
+        set c: string.sub $req, $i, 1
         if $state == 0:
             if $c == " ":
                 state: 1
@@ -140,14 +135,14 @@ fun handle_request:
     end
 
     if (sizeof $path) > 1:
-        if (String.sub $path, 0, 1) == "/":
-            path: String.sub $path, 1, ((sizeof $path) - 1)
+        if (string.sub $path, 0, 1) == "/":
+            path: string.sub $path, 1, ((sizeof $path) - 1)
         end
     end
 
-    IO.println Terminal.text $Terminal.YELLOW, "[" << $method << "] /" << $path
+    @println terminal.text $terminal.YELLOW, "[" << $method << "] /" << $path
 
-    set parts: String.split $path, "/"
+    set parts: string.split $path, "/"
     set action: ""
     if (sizeof $parts) > 0:
         action: $parts{0}
@@ -157,25 +152,23 @@ fun handle_request:
     set status: "200 OK"
     set content_type: "application/json"
 
-    | ROUTE: Dynamic HTML Dashboard
+    ; ROUTE: Dynamic HTML Dashboard
     if $action == "":
-        set content_type: "text/html| charset=utf-8"
-        set template: File.readEntireFile "index.html"
-
+        set content_type: "text/html; charset=utf-8"
+        set template: readfile "index.html"
         set rows: ""
         set k: 0
         while $k < (sizeof $db_keys):
             set db_key: $db_keys{$k}
             set db_val: $db{$db_key}
-            | [NEW] Added the Delete button link to the HTML row!
             set btn: "<a class='btn-del' href='/delete/" << $db_key << "'>Delete</a>"
             rows: $rows << "<tr><td>" << $db_key << "</td><td>" << $db_val << "</td><td>" << $btn << "</td></tr>"
             k: $k + 1
         end
 
-        response_body: String.replace $template, "{{table_rows}}", $rows
+        response_body: string.replace $template, "{{table_rows}}", $rows
 
-    | ROUTE: API Set
+    ; ROUTE: API Set
     elseif $action == "set":
         if (sizeof $parts) >= 3:
             set key: $parts{1}
@@ -189,26 +182,24 @@ fun handle_request:
             if $exists == 0: set_index $db_keys, (sizeof $db_keys), $key end
             set_index $db, $key, $val
             save_db
-            | [NEW] Redirect back to dashboard instead of showing JSON!
             set status: "302 Found"
             set header: "HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n"
-            Web.send $client, $header
-            Web.close $client
+            web.send $client, $header
+            web.close $client
             return
         else:
             status: "400 Bad Request"
             response_body: "{ 'error': 'Usage: /set/key/value' }"
         end
 
-    | ROUTE: API Delete
+    ; ROUTE: API Delete
     elseif $action == "delete":
         if (sizeof $parts) >= 2:
             set target_key: $parts{1}
-            | 1. Nullify in DB
             set_index $db, $target_key, 0
-            | 2. Filter out of db_keys array
             set new_keys: []
             set k: 0
+
             while $k < (sizeof $db_keys):
                 set current_key: $db_keys{$k}
                 if $current_key != $target_key:
@@ -216,21 +207,21 @@ fun handle_request:
                 end
                 k: $k + 1
             end
-            | 3. Overwrite keys and save
+
             set db_keys: $new_keys
             save_db
-            | 4. Redirect seamlessly back to the dashboard!
+
             set status: "302 Found"
             set header: "HTTP/1.1 302 Found\r\nLocation: /\r\n\r\n"
-            Web.send $client, $header
-            Web.close $client
+            web.send $client, $header
+            web.close $client
             return
         else:
             status: "400 Bad Request"
             response_body: "{ 'error': 'Usage: /delete/key' }"
         end
 
-    | ROUTE: API Get
+    ; ROUTE: API Get
     elseif $action == "get":
         if (sizeof $parts) >= 2:
             set key: $parts{1}
@@ -256,30 +247,30 @@ fun handle_request:
     header: $header << "Content-Length: " << (sizeof $response_body) << "\r\n"
     header: $header << "Connection: close\r\n\r\n"
 
-    Web.send $client, $header << $response_body
+    web.send $client, $header << $response_body
 
-    if $status == "200 OK": IO.println Terminal.success "  -> " << $status
-    else: IO.println Terminal.error "  -> " << $status end
+    if $status == "200 OK": @println terminal.success "  -> " << $status
+    else: @println terminal.error "  -> " << $status end
 
-    Process.sleep 1
-    Web.close $client
+    process.sleep 1
+    web.close $client
 end
 
 fun main:
     set port: 8080
-    IO.println Terminal.text $Terminal.CYAN, "--- NEWTON WEB DASHBOARD v2.0 ---"
+    @println terminal.text $terminal.CYAN, "--- NEWTON WEB DASHBOARD v2.0 ---"
 
     load_db
     ensure_template_html
 
-    IO.println Terminal.text $Terminal.BLUE, "[*] Running on http://localhost:" << $port
+    @println terminal.text $terminal.BLUE, "[*] Running on http://localhost:" << $port
 
-    set server: Web.new 0
-    Web.bind $server, $port
-    Web.listen $server
+    set server: web.new 0
+    web.bind $server, $port
+    web.listen $server
 
     while 1 == 1:
-        set client: Web.accept $server
+        set client: web.accept $server
         handle_request $client
     end
 end

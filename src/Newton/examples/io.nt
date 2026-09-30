@@ -1,19 +1,15 @@
-fun Main:
-    println "--- File I/O with Constants ---"
-
-    println "Opening for Write..."
+fun main:
+    @println "--- File I/O with Constants ---"
+    @println "Opening for Write..."
     set fd: (fopen "test.txt", $fmWrite)
 
-    File.Write $fd, "This was written using global constants!"
-    File.Close $fd
+    file.write $fd, "This was written using global constants!"
+    file.close $fd
 
-    | 2. Read using the exported constant
-    | $File.fmRead resolves to 0 (O_RDONLY)
     println "Opening for Read..."
     set fd2: (fopen "test.txt", $fmRead)
 
-    set content: (File.Read $fd2, 100)
-    println "Content: " << $content
-
-    File.Close $fd2
+    set content: (file.read $fd2, 100)
+    @println "Content: " << $content
+    file.close $fd2
 end

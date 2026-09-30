@@ -11,11 +11,11 @@ fun main:
     set status: 200
 
     if $status == 200:
-        IO.Std_Println "Success!"
+        IO.println "Success!"
     elseif $status == 404:
-        IO.Std_Println "Not Found"
+        IO.println "Not Found"
     else:
-        IO.Std_Println "Unknown Error"
+        IO.println "Unknown Error"
     end
 end
 ```
@@ -29,9 +29,9 @@ fun main:
     set my_val: "Hello"
 
     match (typeof $my_val):
-        "string" -> IO.Std_Println "It is a string!"
-        "number" -> IO.Std_Println "It is a number!"
-        "list"   -> IO.Std_Println "It is a list!"
+        "string" -> IO.println "It is a string!"
+        "number" -> IO.println "It is a number!"
+        "list"   -> IO.println "It is a list!"
     end
 end
 ```
@@ -49,7 +49,7 @@ fun main:
     set count: 0
 
     while $count < 5:
-        IO.Std_Println $count
+        IO.println $count
         count: $count + 1
     end
 end

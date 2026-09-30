@@ -8,24 +8,18 @@
 
 .section .text
 
-# ----------------------------------------
-# STRING OPS
-# ----------------------------------------
-
 .global string_len
 string_len:
     test %rdi, %rdi; jz .null_len
-
-    # [THE ARMOR] Guard against Integers!
     mov %rdi, %rax
     and $1, %rax
     jnz .null_len
 
-    # Safe to read the Type Tag now
     mov -8(%rdi), %rcx
     cmp $5, %rcx
     je .Llen_view
     xor %rax, %rax
+
 .len_loop: cmpb $0, (%rdi, %rax); je .len_done; inc %rax; jmp .len_loop
 .Llen_view: mov 8(%rdi), %rax; ret
 .len_done: ret
@@ -35,18 +29,15 @@ string_len:
 string_substring:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13; push %r14; push %r15
-
-    sar $1, %rsi      # Untag start index
-    sar $1, %rdx      # Untag requested length
-
+    sar $1, %rsi
+    sar $1, %rdx
     mov %rdi, %rbx
     mov %rsi, %r12
     mov %rdx, %r13
-
     mov %rbx, %rdi
     call string_len
-    mov %rax, %r14
 
+    mov %rax, %r14
     cmp %r14, %r12
     jge .Lsub_empty
 
@@ -54,6 +45,7 @@ string_substring:
     add %r13, %rax
     cmp %r14, %rax
     jle .Lsub_do
+
     mov %r14, %r13
     sub %r12, %r13
 
@@ -65,7 +57,6 @@ string_substring:
     movq $1, 0(%rax)
     add $8, %rax
     mov %rax, %r15
-
     mov -8(%rbx), %rcx
     cmp $5, %rcx
     jne .Lsub_copy
@@ -88,108 +79,88 @@ string_substring:
 .Lsub_empty:
     mov $9, %rdi
     call _malloc
+
     movq $1, 0(%rax)
     add $8, %rax
     movb $0, (%rax)
     pop %r15; pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
-# ----------------------------------------
-# SECURE STRING CONCATENATION (<<)
-# ----------------------------------------
 .global string_concat
 string_concat:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13; push %r14; push %r15
-
-    mov %rdi, %rbx    # Save str1
-    mov %rsi, %r12    # Save str2
-
-    # --- 1. GET EXACT LENGTHS ---
+    mov %rdi, %rbx
+    mov %rsi, %r12
     mov %rbx, %rdi
-    call string_len
-    mov %rax, %r13    # len1
 
+    call string_len
+    mov %rax, %r13
     mov %r12, %rdi
+
     call string_len
-    mov %rax, %r14    # len2
+    mov %rax, %r14
+    lea 9(%r13, %r14), %rdi
 
-    # --- 2. ALLOCATE EXACT MEMORY ---
-    lea 9(%r13, %r14), %rdi  # len1 + len2 + 1 (for \0)
     call _malloc
-    movq $1, 0(%rax)         # Tag as Type 1 String
+    movq $1, 0(%rax)
     add $8, %rax
-    mov %rax, %r15           # Save new string pointer
-
-    # --- 3. RESOLVE TYPE 5 POINTERS (WITH ARMOR) ---
-
-    # Armor str1
+    mov %rax, %r15
     test %rbx, %rbx
     jz .Lsc_str1_ok
+
     mov %rbx, %rax
-    and $1, %rax         # Is it an integer?
-    jnz .Lsc_str1_ok     # If yes, skip pointer resolution!
+    and $1, %rax
+    jnz .Lsc_str1_ok
 
     mov -8(%rbx), %rcx
     cmp $5, %rcx
     jne .Lsc_str1_ok
     mov 0(%rbx), %rbx
-.Lsc_str1_ok:            # <-- Label 1
 
-    # Armor str2
+.Lsc_str1_ok:
     test %r12, %r12
     jz .Lsc_str2_ok
     mov %r12, %rax
-    and $1, %rax         # Is it an integer?
-    jnz .Lsc_str2_ok     # If yes, skip pointer resolution!
+    and $1, %rax
+    jnz .Lsc_str2_ok
 
     mov -8(%r12), %rcx
     cmp $5, %rcx
     jne .Lsc_str2_ok
     mov 0(%r12), %r12
-.Lsc_str2_ok:            # <-- THE MISSING LABEL 2!
 
-    # --- 4. SECURE MEMORY COPY (No \0 loops!) ---
-    # Copy str1 exactly 'len1' times
+.Lsc_str2_ok:
     mov %r15, %rdi
     mov %rbx, %rsi
     mov %r13, %rcx
     rep movsb
 
-    # Copy str2 exactly 'len2' times
     mov %r15, %rdi
-    add %r13, %rdi           # Offset dest by len1
+    add %r13, %rdi
     mov %r12, %rsi
     mov %r14, %rcx
     rep movsb
 
-    # --- 5. SECURE NULL TERMINATION ---
     mov %r15, %rdi
     add %r13, %rdi
     add %r14, %rdi
-    movb $0, (%rdi)          # Write '\0' at the exact end
-
-    # Return new string
+    movb $0, (%rdi)
     mov %r15, %rax
     pop %r15; pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
 .global string_ord
 string_ord:
-    # 1. Null check (Coalesce to Tagged 0)
     test %rdi, %rdi
     jz .Lord_zero
-
-    # 2. Guard against Integers! (If it's an int, don't dereference)
     mov %rdi, %rax
     and $1, %rax
     jnz .Lord_zero
-
-    # 3. Resolve Type 5 Slices
     mov -8(%rdi), %rcx
     cmp $5, %rcx
     jne .Lord_read
-    mov 0(%rdi), %rdi    # Get the raw string pointer from the slice
+    mov 0(%rdi), %rdi
 
 .Lord_read:
     xor %rax, %rax
@@ -209,26 +180,22 @@ string_char:
     sar $1, %rbx
     mov $10, %rdi
     call _malloc
+
     movq $1, 0(%rax)
     add $8, %rax
     movb %bl, 0(%rax)
     movb $0, 1(%rax)
     pop %rbx; leave; ret
 
-# ----------------------------------------
-# POLYMORPHISM (Maps, Lists, Strings)
-# ----------------------------------------
-
 .global collection_len
 collection_len:
     test %rdi, %rdi; jz .Lclz
-
-    mov %rdi, %rcx; and $1, %rcx; jnz .Lclz  # Guard against integers
-
+    mov %rdi, %rcx; and $1, %rcx; jnz .Lclz
     mov -8(%rdi), %rax
     cmp $1, %rax; je .Ldsl
     cmp $2, %rax; je map_len
     cmp $3, %rax; je array_len
+
 .Lclz: mov $1, %rax; ret
 .Ldsl: call string_len; shl $1, %rax; or $1, %rax; ret
 
@@ -238,6 +205,7 @@ collection_delete:
     mov -8(%rdi), %rax
     cmp $2, %rax; je map_delete
     cmp $3, %rax; je array_delete
+
 .Lcol_del_fail:
     mov $1, %rax
     ret
@@ -247,15 +215,17 @@ collection_get:
     test %rdi, %rdi; jz .Lcg_zero
     test %rsi, %rsi; jnz .Lcg_do
     mov $1, %rsi
-.Lcg_do:
-    mov %rdi, %rcx; and $1, %rcx; jnz .Lcg_zero  # Guard against integers
 
+.Lcg_do:
+    mov %rdi, %rcx; and $1, %rcx; jnz .Lcg_zero
     mov -8(%rdi), %rax
     cmp $1, %rax; je .Lcg_str
     cmp $2, %rax; je map_get
     cmp $3, %rax; je array_get
+
 .Lcg_zero:
     mov $1, %rax; ret
+
 .Lcg_str:
     sar $1, %rsi; xor %rax, %rax; movb (%rdi, %rsi, 1), %al; shl $1, %rax; or $1, %rax; ret
 
@@ -263,6 +233,7 @@ collection_get:
 collection_set:
     test %rdi, %rdi; jz .csetr; mov -8(%rdi), %rax
     cmp $2, %rax; je map_set; cmp $3, %rax; je array_set
+
 .csetr: ret
 
 .global collection_get_key
@@ -273,32 +244,33 @@ collection_get_key:
     je .Lcgk_map
     mov %rsi, %rax
     ret
+
 .Lcgk_map:
     mov (%rdi), %rcx
     mov %rsi, %r9
     sar $1, %r9
+
 .Lcgk_map_loop:
     test %rcx, %rcx; jz .Lcgk_null
     test %r9, %r9; jz .Lcgk_map_found
     dec %r9
     mov 16(%rcx), %rcx
     jmp .Lcgk_map_loop
+
 .Lcgk_map_found:
     mov 0(%rcx), %rax
     ret
+
 .Lcgk_null:
     mov $1, %rax
     ret
-
-# ----------------------------------------
-# LISTS (Arrays)
-# ----------------------------------------
 
 .global new_array
 new_array:
     push %rbp; mov %rsp, %rbp
     mov $2048, %rdi
     call _malloc
+
     movq $3, 0(%rax)
     movq $0, 8(%rax)
     add $8, %rax
@@ -306,18 +278,17 @@ new_array:
 
 .global array_set
 array_set:
-    # --- [WRITE BARRIER] ---
     test $1, %rdx
     jnz .Larr_barrier_skip
     push %rdi; push %rsi; push %rdx
     mov %rdx, %rdi
     call make_grey
     pop %rdx; pop %rsi; pop %rdi
-.Larr_barrier_skip:
-    # -----------------------
 
+.Larr_barrier_skip:
     sar $1, %rsi; mov 0(%rdi), %rcx
     cmp %rsi, %rcx; jg .Larr_set_do; mov %rsi, %rcx; inc %rcx; mov %rcx, 0(%rdi)
+
 .Larr_set_do: mov %rdx, 8(%rdi, %rsi, 8); ret
 
 .global array_get
@@ -337,14 +308,17 @@ array_delete:
     test %r8, %r8; jz .Larr_del_finish
     lea 8(%rdi, %rsi, 8), %rdx
     lea 16(%rdi, %rsi, 8), %r9
+
 .Larr_del_shift_loop:
     mov (%r9), %rax; mov %rax, (%rdx)
     add $8, %rdx; add $8, %r9; dec %r8
     jnz .Larr_del_shift_loop
+
 .Larr_del_finish:
     dec %rcx; mov %rcx, 0(%rdi)
     mov $3, %rax
     leave; ret
+
 .Larr_del_out_of_bounds:
     mov $1, %rax
     leave; ret
@@ -358,10 +332,6 @@ array_concat:
     lea 8(%rbx), %rsi; lea 16(%r13), %rdi; mov %r8, %rcx; cld; rep movsq
     lea 8(%r12), %rsi; mov %r9, %rcx; rep movsq
     lea 8(%r13), %rax; pop %r13; pop %r12; pop %rbx; leave; ret
-
-# ----------------------------------------
-# MAPS (Linked Lists)
-# ----------------------------------------
 
 .global new_map
 new_map:
@@ -382,6 +352,7 @@ map_get:
     mov %rsi, %rax
     and $1, %rax
     jnz .Lmap_get_index
+
 .Lmap_g:
     test %rcx, %rcx; jz .Lmap_null
     mov 0(%rcx), %r8
@@ -391,14 +362,18 @@ map_get:
     pop %rcx; pop %rsi; pop %rdi
     cmp $3, %rax; je .Lmap_g_fnd
     mov 16(%rcx), %rcx; jmp .Lmap_g
+
 .Lmap_g_fnd:
     mov 8(%rcx), %rax; ret
+
 .Lmap_get_index:
     mov %rsi, %r9; sar $1, %r9
+
 .Lmap_idx_loop:
     test %rcx, %rcx; jz .Lmap_null
     test %r9, %r9; jz .Lmap_g_fnd
     dec %r9; mov 16(%rcx), %rcx; jmp .Lmap_idx_loop
+
 .Lmap_null:
     mov $1, %rax; ret
 
@@ -411,6 +386,7 @@ map_set:
     mov %rsi, %rdi
     call make_grey
     pop %rdx; pop %rsi; pop %rdi
+
 .Lmap_barrier_skip1:
     test $1, %rdx
     jnz .Lmap_barrier_skip2
@@ -418,8 +394,10 @@ map_set:
     mov %rdx, %rdi
     call make_grey
     pop %rdx; pop %rsi; pop %rdi
+
 .Lmap_barrier_skip2:
     mov (%rdi), %rcx
+
 .Lmap_upd:
     test %rcx, %rcx; jz .Lmap_new
     mov 0(%rcx), %r8
@@ -429,28 +407,29 @@ map_set:
     pop %rcx; pop %rdx; pop %rsi; pop %rdi
     cmp $3, %rax; je .Lmap_found
     mov 16(%rcx), %rcx; jmp .Lmap_upd
+
 .Lmap_found:
     mov %rdx, 8(%rcx)
     leave; ret
+
 .Lmap_new:
     push %rdi; push %rsi; push %rdx
-    mov $32, %rdi         # [FIX] Alloc 32 bytes! (8 for Tag, 24 for Node)
+    mov $32, %rdi
     call _malloc
+
     pop %rdx; pop %rsi; pop %rdi
-
-    movq $6, 0(%rax)      # [FIX] Set Type Tag 6 (Map Node)
-    add $8, %rax          # [FIX] Shift pointer to the payload
-
+    movq $6, 0(%rax)
+    add $8, %rax
     mov %rsi, 0(%rax)
     mov %rdx, 8(%rax)
     mov (%rdi), %rcx
     mov %rcx, 16(%rax)
     mov %rax, (%rdi)
-
     push %rax
     push %rdi
     mov %rax, %rdi
     call make_grey
+
     pop %rdi
     pop %rax
     leave; ret
@@ -463,18 +442,22 @@ map_delete:
     mov %rsi, %r13
     mov %r14, %r12
     mov (%r14), %rbx
+
 .Ldel_loop:
     test %rbx, %rbx; jz .Ldel_not_found
     mov 0(%rbx), %rdi; mov %r13, %rsi; call runtime_eq
     cmp $3, %rax; je .Ldel_found
     lea 16(%rbx), %r12; mov 16(%rbx), %rbx; jmp .Ldel_loop
+
 .Ldel_found:
     mov 16(%rbx), %rax
     mov %rax, (%r12)
     mov $3, %rax
     jmp .Ldel_done
+
 .Ldel_not_found:
     mov $1, %rax
+
 .Ldel_done:
     pop %r14; pop %r13; pop %r12; pop %rbx; leave; ret
 
@@ -487,10 +470,6 @@ node_val: mov 8(%rdi), %rax; ret
 .global node_next
 node_next: mov 16(%rdi), %rax; ret
 
-# ----------------------------------------
-# UTILITIES
-# ----------------------------------------
-
 .global get_type_str
 get_type_str:
     push %rbp; mov %rsp, %rbp
@@ -501,6 +480,7 @@ get_type_str:
     cmp $2, %rax; je .Ltm
     cmp $3, %rax; je .Ltl
     cmp $4, %rax; je .Ltf
+
 .Ltu: lea .Lstr_unknown(%rip), %rdi; jmp .Lta
 .Lti: lea .Lstr_int(%rip), %rdi; jmp .Lta
 .Lts: lea .Lstr_string(%rip), %rdi; jmp .Lta
@@ -513,9 +493,11 @@ get_type_str:
 string_new:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r14
     mov %rdi, %rbx; xor %rcx, %rcx
+
 .snl: cmpb $0, (%rbx, %rcx); je .sna; inc %rcx; jmp .snl
 .sna: mov %rcx, %rdi; add $9, %rdi; call _malloc
     movq $1, 0(%rax); add $8, %rax; mov %rbx, %rsi; mov %rax, %rdi
+
 .snc: movb (%rsi), %cl; movb %cl, (%rdi); test %cl, %cl; jz .snd; inc %rsi; inc %rdi; jmp .snc
 .snd: pop %r14; pop %rbx; leave; ret
 
@@ -530,11 +512,13 @@ runtime_get_arg:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12; push %r13
     sar $1, %rdi; inc %rdi; cmp __argc(%rip), %rdi; jge .Largv_null
     mov __sys_argv(%rip), %rax; mov (%rax, %rdi, 8), %rbx; xor %rcx, %rcx
+
 .Largv_len: cmpb $0, (%rbx, %rcx); je .Largv_alloc; inc %rcx; jmp .Largv_len
 .Largv_alloc: mov %rcx, %r12; mov %rcx, %rdi; add $9, %rdi; call _malloc
     movq $1, 0(%rax); add $8, %rax; mov %rax, %rdi; mov %rbx, %rsi; mov %r12, %rcx; rep movsb
     movb $0, (%rdi); sub %r12, %rdi; mov %rdi, %rax
     pop %r13; pop %r12; pop %rbx; leave; ret
+
 .Largv_null: mov $1, %rax; pop %r13; pop %r12; pop %rbx; leave; ret
 
 .global newton_box_float
@@ -554,39 +538,25 @@ F_alloc_array:
 alloc_flat_array:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12
-
-    # Windows requires preserving %rdi if we use it!
     push %rdi
-
-    # Allocate 40 bytes of Shadow Space (32 shadow + 8 to re-align stack to 16 bytes)
     sub $40, %rsp
-
-    mov %rcx, %rbx       # %rcx holds the TAGGED count in Windows
-    sar $1, %rbx         # SAFE HARDWARE UNTAG
-
-    # Calculate bytes: (count * 8) + 16 bytes for headers
-    mov %rbx, %rcx       # Arg 1 for _malloc
+    mov %rcx, %rbx
+    sar $1, %rbx
+    mov %rbx, %rcx
     shl $3, %rcx
     add $16, %rcx
     call _malloc
 
-    mov %rax, %r12       # Save base memory pointer to %r12
-
-    # Initialize headers
-    movq $3, 0(%r12)     # Offset 0: Type = 3 (Array)
-    mov %rbx, 8(%r12)    # Offset 8: True Length (2500)
-
-    # Zero-fill the buffer with Newton's Tagged 0
-    lea 16(%r12), %rdi   # %rdi is mandatory for rep stosq
-    mov %rbx, %rcx       # %rcx is the mandatory count for rep
+    mov %rax, %r12
+    movq $3, 0(%r12)
+    mov %rbx, 8(%r12)
+    lea 16(%r12), %rdi
+    mov %rbx, %rcx
     mov $1, %rax
     cld
     rep stosq
 
-    # Return pointer to the Length field
     lea 8(%r12), %rax
-
-    # Cleanup shadow space and restored registers
     add $40, %rsp
     pop %rdi
     pop %r12; pop %rbx

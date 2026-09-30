@@ -1,0 +1,15 @@
+; Filename: system.nt
+; Description: System module for Newton's standard library
+; Date: April 30th, 2026 *
+
+fun argv: @args index
+	return sys_argv($index)
+end
+
+fun argc: @args _null
+	return sys_argc $_null
+end
+
+fun exit: @args errno
+    proc_exit $errno
+end

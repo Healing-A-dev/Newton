@@ -9,7 +9,7 @@ In standard Newton code (`.nt`), all executable code must live inside the `main`
 
 ```asm
 fun main:
-    IO.Std_Println "Hello, Newton!"
+    IO.println "Hello, Newton!"
 end
 ```
 
@@ -24,7 +24,7 @@ fun main:
     my_age: 26
     
     ; Reading a variable requires the '$' prefix
-    IO.Std_Println $my_age
+    IO.println $my_age
 end
 ```
 
@@ -45,7 +45,7 @@ Because reading a variable strictly requires the `$` prefix, variables and funct
 ```asm
 ; Define a function called 'build'
 fun build:
-    IO.Std_Println "Building the project..."
+    IO.println "Building the project..."
 end
 
 fun main:
@@ -53,7 +53,7 @@ fun main:
     set build: "v1.0.0"
     
     build                 ; Calls the function
-    IO.Std_Println $build ; Reads the variable
+    IO.println $build ; Reads the variable
     ; The compiler never gets confused:
 end
 ```
@@ -64,7 +64,7 @@ Because Newton supports first-class functions, you can assign a function to a va
 
 ```asm
 fun main:
-    set my_func: IO.Std_Println
+    set my_func: IO.println
     call $my_func("Hello from dynamic dispatch!")
 end
 ```
@@ -154,7 +154,7 @@ To prevent runtime crashes, Newton's standard library avoids throwing exceptions
 
 ```asm
 fun main:
-    set file_result: @capture File.Std_ReadEntireFile "config.txt"
+    set file_result: @capture File.readEntireFile "config.txt"
     
     if $file_result{0} == "error":
         println "Failed to read file: {}", $file_result{1}
@@ -164,6 +164,6 @@ fun main:
 end
 ```
 
-> **Note:** The standard library provides utility macros like `@isERR` and `@getERR` to make checking these results even cleaner!
+> **Note:** The standard library provides utility macros like `@isError` and `@getError` to make checking these results even cleaner!
 
 ***

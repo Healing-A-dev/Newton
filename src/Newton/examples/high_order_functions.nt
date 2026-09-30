@@ -3,17 +3,17 @@ fun add: @args a, b
 end
 
 fun apply: @args val1, val2, func
-    @println "Calling function dynamically..."
+    @println "Called function dynamically."
     return call $func ($val1, $val2)
 end
 
 fun main:
-    ; 1. Store function in variable
+    ; Store function in variable
     set my_op: $add
 
-    ; 2. Pass it to another function
+    ; Pass it to another function
     set result: (apply 10, 20, $my_op)
 
-	; 3. Display the result
+	; Display the result
     @println "Result: {}", $result
 end

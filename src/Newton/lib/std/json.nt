@@ -1,0 +1,126 @@
+; Filename: json.nt
+; Description: Json module for the newton standard library
+; Date: April 30th, 2026 *
+
+fun parse: @args json_str
+
+    set obj: ()
+    set len_s: sizeof $json_str
+    set i: 0
+
+    ; States: 0=seek key, 1=in key, 2=seek colon, 3=seek val, 4=in string, 5=in unquoted (number/boolean)
+    set state: 0
+    set curr_key: ""
+    set curr_val: ""
+
+    while $i < $len_s:
+        set c: substring $json_str, $i, 1
+
+        if $state == 0:
+            if ($c == "\"") or ($c == "'"): state: 1 end
+
+        elseif $state == 1:
+            if ($c == "\"") or ($c == "'"): state: 2 else: curr_key: $curr_key << $c end
+
+        elseif $state == 2:
+            if $c == ":": state: 3 end
+
+        elseif $state == 3:
+            if ($c == "\"") or ($c == "'"):
+                state: 4
+            elseif ($c != " ") and ($c != "\n") and ($c != "\r") and ($c != "\t"):
+                state: 5
+                curr_val: $c
+            end
+
+        elseif $state == 4:
+            if ($c == "\"") or ($c == "'"):
+                obj{$curr_key}: $curr_val
+                curr_key: ""
+                curr_val: ""
+                state: 0
+            else:
+                curr_val: $curr_val << $c
+            end
+
+        elseif $state == 5:
+            if ($c == ",") or ($c == "}"):
+                obj{$curr_key}: $curr_val
+                curr_key: ""
+                curr_val: ""
+                state: 0
+            elseif ($c != " ") and ($c != "\n") and ($c != "\r"):
+                curr_val: $curr_val << $c
+            end
+        end
+
+        i: $i + 1
+    end
+
+    return ["ok", $obj]
+end
+
+
+fun stringify:
+    @args obj
+
+    set json_str: "{"
+    set is_first: 1
+
+    foreach &key, &val, $obj:
+        if $is_first == 0:
+            json_str: $json_str << ", "
+        else:
+            is_first: 0
+        end
+
+        json_str: $json_str << "\"" << $key << "\": \"" << $val << "\""
+    end
+
+    json_str: $json_str << "}"
+    return ["ok", $json_str]
+end
+
+
+fun jsonify: @args data
+    set type: typeof $data
+
+    if $type == "string":
+        return "\"" << $data << "\""
+    end
+
+    if $type == "list":
+        set json: "["
+        set len: sizeof $data
+        set i: 0
+        while $i < $len:
+            json: $json << json.jsonify $data{$i}
+
+            i: $i + 1
+            if $i < $len:
+                json: $json << ", "
+            end
+        end
+        json: $json << "]"
+        return $json
+    end
+
+    if $type == "map":
+        set json: "{"
+        set len: sizeof $data
+        set count: 0
+        foreach &key, &val, $data:
+            json: $json << "\"" << $key << "\": "
+            json: $json << json.jsonify $val
+
+            count: $count + 1
+            if $count < $len:
+                json: $json << ", "
+            end
+        end
+        json: $json << "}"
+        return $json
+    end
+
+    return "" << $data
+end

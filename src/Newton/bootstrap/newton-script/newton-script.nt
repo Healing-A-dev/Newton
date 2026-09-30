@@ -12,14 +12,15 @@
 ;------------------------------------------------------------------------------------------------------------------------|
 
 ; Imports
-using std::OS
-using std::String
-using std::File
+using std::os
+using std::string
+using std::file
 
 ; Global Variables
 ; Local in this case means functions and macros defined within the current file
 set localFunctionMacroBuffer*: ()
 set localLinesToDelete*: []
+set linkerFiles*: []
 set FILEMODE_WRITE*: 577
 
 ; Taken right out of the std::Base.nt file
@@ -33,12 +34,12 @@ fun die: @args msg, errno
 end
 
 fun stripLeadingSpaces: @args str
-    set chararacters: String.Std_Split $str, ""
+    set chararacters: string.split $str, ""
     if (sizeof $chararacters) == 0: return "" end
     set output_str: ""
     for &char, 0, (sizeof $chararacters), 1:
         if ($chararacters{$char} != " ") and ($chararacters{$char} != "\t"):
-            output_str: String.Sub $str, $char, (sizeof $str)
+            output_str: string.sub $str, $char, (sizeof $str)
             break
         end
     end
@@ -46,17 +47,34 @@ fun stripLeadingSpaces: @args str
 end
 
 fun stripTrailingSpaces: @args str
-    set chararacters: String.Std_Split (String.Reverse $str), ""
+    set chararacters: string.split (string.reverse $str), ""
     if (sizeof $chararacters) == 0: return "" end
     set output_str: ""
     for &char, 0, (sizeof $chararacters), 1:
         if ($chararacters{$char} != " ") and ($chararacters{$char} != "\t"):
-            output_str: String.Sub $str, $char, (sizeof $str)
+            output_str: string.sub $str, $char, (sizeof $str)
             break
         end
     end
     return $output_str
 end
+
+fun joinList: @args listname, sep
+	set output_str: ""
+	for &item, 0, (sizeof $listname), 1:
+		output_str: $output_str << $sep << $listname{$item} << " "
+	end
+	return $output_str
+end
+
+fun buildArgv:
+	set out: []
+	for &arg, 1, (sys_argc 0), 1: ; Intrinsic argv call [NOT RECOMMENDED]
+		out{(sizeof $out)}: sys_argv $arg
+	end
+	return $out
+end
+
 
 fun processFunctions: @args file, start
     set depthCounter: 0
@@ -64,23 +82,23 @@ fun processFunctions: @args file, start
         set stripped_line: stripLeadingSpaces $file{$line}
 		stripped_line: stripTrailingSpaces $stripped_line
 
-		match (String.Sub $stripped_line, 0, 2):
+		match (string.sub $stripped_line, 0, 2):
 		    "if" -> depthCounter: $depthCounter + 1
-			"wh" -> if (String.Sub $stripped_line, 2, 3) == "ile":
+			"wh" -> if (string.sub $stripped_line, 2, 3) == "ile":
 			            depthCounter: $depthCounter + 1
 					end
-			"fo" -> if ((String.Sub $stripped_line, 2, 1) == "r") or (String.Sub $stripped_line, 2, 5) == "reach":
+			"fo" -> if ((string.sub $stripped_line, 2, 1) == "r") or (string.sub $stripped_line, 2, 5) == "reach":
 			            depthCounter: $depthCounter + 1
 					end
-			"ma" -> if (String.Sub $stripped_line, 2, 3) == "tch":
+			"ma" -> if (string.sub $stripped_line, 2, 3) == "tch":
                         depthCounter: $depthCounter + 1
 					end
-			"fu" -> if (String.Sub $stripped_line, 2, 1) == "n" and $depthCounter > 0:
+			"fu" -> if (string.sub $stripped_line, 2, 1) == "n" and $depthCounter > 0:
                         die "Functions can only be defined at top level <:" << (string $depthCounter) << ">", 1
                     else:
                         depthCounter: $depthCounter + 1
 					end
-			"de" -> if (String.Sub $stripped_line, 2, 6) == "fmacro" and $depthCounter > 0:
+			"de" -> if (string.sub $stripped_line, 2, 6) == "fmacro" and $depthCounter > 0:
                         die "Macros can only be defined at top level <:" << (string $depthCounter) << ">", 1
                     else:
                         depthCounter: $depthCounter + 1
@@ -88,9 +106,9 @@ fun processFunctions: @args file, start
 		end
 
 		if $depthCounter > 0:
-		    if (String.Sub $stripped_line, 0, 3) == "end":
+		    if (string.sub $stripped_line, 0, 3) == "end":
 				depthCounter: $depthCounter - 1
-			elseif (String.Sub $stripped_line, (sizeof $stripped_line) - 3, 3) == "end" and (String.Sub $stripped_line, (sizeof $stripped_line) - 4, 1) == " ":
+			elseif (string.sub $stripped_line, (sizeof $stripped_line) - 3, 3) == "end" and (string.sub $stripped_line, (sizeof $stripped_line) - 4, 1) == " ":
 				depthCounter: $depthCounter - 1
 			end
 			localFunctionMacroBuffer{(sizeof $localFunctionMacroBuffer)}: $file{$line}
@@ -103,10 +121,10 @@ fun processFunctions: @args file, start
 end
 
 fun main:
-	set file: String.Std_Split (File.Std_ReadEntireFile (sys_argv 0)), "\n" ; Intrinsic argv call [NOT RECOMMENDED]
+	set file: string.split (file.readEntireFile (sys_argv 0)), "\n" ; Intrinsic argv call [NOT RECOMMENDED]
 
 	; Output file name and extension
-	set out_filename: String.Std_Split (sys_argv 0), "." ; Intrinsic argv call [NOT RECOMMENDED]
+	set out_filename: string.split (sys_argv 0), "." ; Intrinsic argv call [NOT RECOMMENDED]
 	set in_extension: $out_filename{1}
 	out_filename: "__@nout." << $out_filename{0} << "__"
 
@@ -114,12 +132,28 @@ fun main:
 	for &line, 0, (sizeof $file) - 1, 1:
 	    set stripped_line: stripLeadingSpaces $file{$line}
 		stripped_line: stripTrailingSpaces $stripped_line
-		match (String.Sub $stripped_line, 0, 3):
+
+		; Add support for file linking within the source file itself
+		; <link: raylib, ncurses, ../file_name.o, etc>
+		if (string.startsWith $stripped_line, "<link:"):
+			stripped_line: string.replace $stripped_line, "<link:", ""
+			stripped_line: string.replace $stripped_line, ">", ""
+
+			set linker_files: string.split $stripped_line, ","
+			for &file_idx, 0, (sizeof $linker_files), 1:
+				set __file__: stripLeadingSpaces $linker_files{$file_idx}
+				__file__: stripTrailingSpaces $linker_files{$file_idx}
+				linkerFiles{(sizeof $linkerFiles)}: $__file__
+			end
+			file{$line}: ""
+		end
+
+		match (string.sub $stripped_line, 0, 3):
 		    "fun" -> processFunctions $file, $line
-			"def" -> if (String.Sub $stripped_line, 3, 5) == "macro":
+			"def" -> if (string.sub $stripped_line, 3, 5) == "macro":
                 processFunctions $file, $line
             end
-            "usi" -> if (String.Sub $stripped_line, 3, 2) == "ng":
+            "usi" -> if (string.sub $stripped_line, 3, 2) == "ng":
                 localFunctionMacroBuffer{(sizeof $localFunctionMacroBuffer)}: $file{$line}
                 localLinesToDelete{(sizeof $localLinesToDelete)}: $line
             end
@@ -132,27 +166,28 @@ fun main:
 	end
 
 	; Writing function/macro buffer
-	set fd: File.Std_Open $out_filename << ".nt", $FILEMODE_WRITE
+	set fd: file.open $out_filename << ".nt", $FILEMODE_WRITE
 	set idx: (sizeof $localFunctionMacroBuffer) - 1
 	while $idx >= 0:
-	  File.Std_Write $fd, $localFunctionMacroBuffer{$idx} << "\n"
+		file.write $fd, $localFunctionMacroBuffer{$idx} << "\n"
 		idx: $idx - 1
 	end
 
 	; Writing remainging content
-	File.Std_Write $fd, "fun main:\n"
+	file.write $fd, "exposed fun main:\n"
 	for &line, 0, (sizeof $file) - 1, 1:
 	    if (sizeof $file{$line}) > 0:
-			File.Std_Write $fd, "    " << $file{$line} << "\n"
+			file.write $fd, "    " << $file{$line} << "\n"
 		end
 	end
-	File.Std_Write $fd, "end"
-	File.Std_Close $fd
+	file.write $fd, "end"
+	file.close $fd
 
 	; Compiling and running code
-	OS.Execute "newton run " << $out_filename << ".nt"
-	OS.Execute "rm " << $out_filename << ".nt"
-	OS.Execute "rm " << $out_filename
+	os.execute "newton " << $out_filename << ".nt " << (joinList $linkerFiles, "-l ")
+	os.execute "./" << $out_filename << " " << (joinList (buildArgv), " ")
+	os.execute "rm " << $out_filename << ".nt"
+	os.execute "rm " << $out_filename
 end
 
 ;-----------------------|

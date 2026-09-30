@@ -1,6 +1,6 @@
 .section .data
     .global gc_threshold
-    gc_threshold:    .quad 2097152    # 2MB Threshold
+    gc_threshold:    .quad 2097152
 
 .section .bss
     .global current_brk
@@ -42,18 +42,15 @@ _malloc:
     test %rax, %rax
     jnz .Lmalloc_update_bytes
     # Safe fallback: If the entrypoint didn't set __sys_stack_base,
-    # we assume a 64KB safe boundary above current RSP to scan!
     mov %rsp, %rax
     add $65536, %rax
     mov %rax, __sys_stack_base(%rip)
 
 .Lmalloc_update_bytes:
-    # 1. Update bytes allocated
     mov bytes_allocated(%rip), %rax
     add %rdi, %rax
     mov %rax, bytes_allocated(%rip)
 
-    # 2. State Machine Trigger
     mov gc_phase(%rip), %rax
     cmp $1, %rax
     je .Lmalloc_step
@@ -62,10 +59,8 @@ _malloc:
     cmp gc_threshold(%rip), %rax
     jl .Lmalloc_align
 
-    # --- START A NEW GC CYCLE ---
     movq $1, gc_phase(%rip)
     movq $0, bytes_allocated(%rip)
-
     push %rdi
     call seed_roots
     pop %rdi
@@ -77,7 +72,6 @@ _malloc:
     pop %rdi
 
 .Lmalloc_align:
-    # Align Size to 16 bytes
     add $15, %rdi
     and $-16, %rdi
     mov %rdi, %r12
@@ -119,7 +113,6 @@ _malloc:
 .Lnew_slab:
     mov $2097152, %rsi
     lea 16(%r13), %rcx
-
     cmp %rsi, %rcx
     jle .Ldo_mmap
     mov %rcx, %rsi
@@ -133,28 +126,24 @@ _malloc:
     mov $-1, %r8
     mov $0, %r9
     syscall
-    pop %rsi
 
+    pop %rsi
     mov slabs_head(%rip), %rdx
     mov %rdx, 0(%rax)
     mov %rax, slabs_head(%rip)
-
     mov %rax, %rcx
     add %rsi, %rcx
     mov %rcx, 8(%rax)
-
     lea 16(%rax), %rbx
     lea (%rbx, %r13), %rdi
     mov %rdi, current_brk(%rip)
     mov %rcx, current_slab_end(%rip)
-
     mov %r13, 8(%rbx)
 
 .Linit_header:
     mov gc_head(%rip), %rax
     mov %rax, 0(%rbx)
     mov %rbx, gc_head(%rip)
-
     lea 16(%rbx), %rax
     push %rax
     push %rcx
@@ -164,10 +153,10 @@ _malloc:
     sub $16, %rcx
     xor %rax, %rax
     rep stosb
+
     pop %rdi
     pop %rcx
     pop %rax
-
     pop %r13
     pop %r12
     pop %rbx
@@ -182,18 +171,15 @@ _free:
     mov free_list_head(%rip), %rax
     mov %rax, 0(%rdi)
     mov %rdi, free_list_head(%rip)
+
 .Lfree_done:
     ret
-
-
-# ==========================================
-# INCREMENTAL GC ENGINE
-# ==========================================
 
 # --- PROTECT .RODATA ---
 .global is_heap_ptr
 is_heap_ptr:
     mov slabs_head(%rip), %rcx
+
 .Lihp_loop:
     test %rcx, %rcx
     jz .Lihp_false
@@ -204,9 +190,11 @@ is_heap_ptr:
     jae .Lihp_next
     mov $1, %rax
     ret
+
 .Lihp_next:
     mov 0(%rcx), %rcx
     jmp .Lihp_loop
+
 .Lihp_false:
     xor %rax, %rax
     ret
@@ -216,8 +204,8 @@ is_heap_ptr:
 make_grey_conservative:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lmgc_done
-
     mov gc_head(%rip), %rcx
+
 .Lmgc_loop:
     test %rcx, %rcx
     jz .Lmgc_done
@@ -231,6 +219,7 @@ make_grey_conservative:
 
 .Lmgc_found:
     call make_grey
+
 .Lmgc_done:
     leave; ret
 
@@ -238,14 +227,12 @@ make_grey_conservative:
 make_grey:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lmg_done
-
-    # --- Ensure it's a HEAP pointer! ---
     push %rdi; push %rcx; push %r8
     call is_heap_ptr
+
     test %rax, %rax
     pop %r8; pop %rcx; pop %rdi
     jz .Lmg_done
-    # -----------------------------------
 
     mov %rdi, %rax
     sub $24, %rax
@@ -255,7 +242,6 @@ make_grey:
 
     bts $63, %rcx
     mov %rcx, 8(%rax)
-
     mov grey_count(%rip), %rcx
     cmp $1000, %rcx
     jge .Lmg_done
@@ -268,12 +254,10 @@ make_grey:
 .Lmg_done:
     leave; ret
 
-
 .global gc_step
 gc_step:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12
-
     mov $10, %r12
 
 .Lstep_loop:
@@ -285,13 +269,14 @@ gc_step:
     mov %rcx, grey_count(%rip)
     lea grey_stack(%rip), %r8
     mov (%r8, %rcx, 8), %rdi
-
     mov -8(%rdi), %rdx
     cmp $3, %rdx
     je .Lstep_array
+
     cmp $2, %rdx
     je .Lstep_map
     jmp .Lstep_next
+
     cmp $6, %rdx
     je .Lstep_map_node
     jmp .Lstep_next
@@ -310,15 +295,17 @@ gc_step:
     leave; ret
 
 .Lstep_array:
-    mov 0(%rdi), %rcx      # [FIXED] True Length is at offset 0
-    lea 8(%rdi), %rsi      # [FIXED] The buffer starts exactly at offset 8!
+    mov 0(%rdi), %rcx
+    lea 8(%rdi), %rsi
+
 .Lsa_loop:
     test %rcx, %rcx; jz .Lstep_next
-    mov (%rsi), %rdi       # Read the element from the buffer
+    mov (%rsi), %rdi
     test $1, %rdi; jnz .Lsa_skip
     push %rcx; push %rsi; push %r12
-    call make_grey         # Safely grey the element!
+    call make_grey
     pop %r12; pop %rsi; pop %rcx
+
 .Lsa_skip:
     add $8, %rsi
     dec %rcx
@@ -326,18 +313,19 @@ gc_step:
 
 .Lstep_map:
     mov (%rdi), %rsi
+
 .Lsm_loop:
     test %rsi, %rsi; jz .Lstep_next
-
     push %rsi; push %r12
     mov %rsi, %rdi
     call make_grey
-    pop %r12; pop %rsi
 
+    pop %r12; pop %rsi
     mov 0(%rsi), %rdi
     test $1, %rdi; jnz .Lsm_skip_key
     push %rsi; push %r12
     call make_grey
+
     pop %r12; pop %rsi
 
 .Lsm_skip_key:
@@ -352,9 +340,7 @@ gc_step:
     jmp .Lsm_loop
 
 .Lstep_map_node:
-    mov %rdi, %rsi         # RSI now holds the Map Node
-
-    # 1. Grey the Key
+    mov %rdi, %rsi
     mov 0(%rsi), %rdi
     test $1, %rdi
     jnz .Lstep_mn_val
@@ -363,7 +349,6 @@ gc_step:
     pop %r12; pop %rsi
 
 .Lstep_mn_val:
-    # 2. Grey the Value
     mov 8(%rsi), %rdi
     test $1, %rdi
     jnz .Lstep_mn_next
@@ -372,7 +357,6 @@ gc_step:
     pop %r12; pop %rsi
 
 .Lstep_mn_next:
-    # 3. Grey the Next Node
     mov 16(%rsi), %rdi
     test %rdi, %rdi
     jz .Lstep_next
@@ -387,6 +371,7 @@ seed_roots:
     push %rbp; mov %rsp, %rbp
     mov __sys_stack_base(%rip), %rcx
     mov %rsp, %rsi
+
 .Lseed_loop:
     cmp %rsi, %rcx
     jbe .Lseed_done
@@ -396,9 +381,11 @@ seed_roots:
     push %rsi; push %rcx
     call make_grey_conservative
     pop %rcx; pop %rsi
+
 .Lseed_next:
     add $8, %rsi
     jmp .Lseed_loop
+
 .Lseed_done:
     leave; ret
 
@@ -420,7 +407,6 @@ gc_sweep:
 
     mov 0(%rax), %rdx
     mov %rdx, (%rbx)
-
     mov free_list_head(%rip), %r9
     mov %r9, 0(%rax)
     mov %rax, free_list_head(%rip)
@@ -441,11 +427,13 @@ gc_collect:
     push %rbp; mov %rsp, %rbp
     movq $1, gc_phase(%rip)
     call seed_roots
+
 .Lforce_mark_loop:
     mov grey_count(%rip), %rcx
     test %rcx, %rcx
     jz .Lforce_sweep
     call gc_step
     jmp .Lforce_mark_loop
+
 .Lforce_sweep:
     leave; ret

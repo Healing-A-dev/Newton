@@ -48,10 +48,10 @@ RUNTIME_OBJS_LINUX = $(RUNTIME_SRCS_LINUX:.s=.o)
 RUNTIME_OBJS_WINDOWS = $(RUNTIME_SRCS_WINDOWS:.s=.w64.o)
 CORE_OBJS = $(CORE_SRCS:.nim)
 
-HOME_DIR = $(HOME)/.local/lib
-BIN_DIR = $(HOME)/.local/bin
-INSTALL_DIR = newton
+HOME_DIR = $(HOME)/.newton
+BIN_DIR = $(HOME)/.newton/bin
 COMPILER = nim
+INSTALL_DIR =
 BACKEND =
 HAS_GVM := $(shell command -v gvm 2> /dev/null)
 
@@ -68,18 +68,13 @@ else
 	CLI_EXT =
 endif
 
-ifeq ($(filter install-GVM,$(MAKECMDGOALS)),)
-ifeq ($(strip $(HAS_GVM)),)
-$(error GravityVM (gvm) is not installed. Please run 'make install-GVM' to install.)
-endif
-endif
+
 
 
 all: src/Newton/newton$(CLI_EXT) src/Newton/lib/libnewton.a src/Newtonian/nnpm
 
 src/Newton/newton: $(CORE_OBJS) src/Newton/lib/libnewton.o src/Newton/lib/libnewton.a
 	$(COMPILER) $(BACKEND) c -o:src/Newton/newton -d:release src/Newton/core/main.nim
-
 
 src/Newtonian/nnpm:
 	$(COMPILER) $(BACKEND) c -o:src/Newtonian/nnpm -d:release src/Newtonian/main.nim
@@ -111,7 +106,18 @@ install: src/Newton/newton
 
 	@# Creating Directories
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/bin
+	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/toolchains
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/lib/std
+
+	@# Installing GravityVM
+	@#ifeq ($(filter install-GVM,$(MAKECMDGOALS)),)
+	@#ifeq ($(strip $(HAS_GVM)),)
+	rm -rf $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm
+	git clone -b Nightly https://github.com/Healing-A-Dev/GravityVM.git $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm
+	$(MAKE) -C $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm HINTS="--hints:on"
+	$(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm/gvm clean-cache
+	@#endif
+	@#endif
 
 	@# Moving Files
 	cp src/Newton/newton $(HOME_DIR)/$(INSTALL_DIR)/bin/newton
@@ -120,20 +126,17 @@ install: src/Newton/newton
 	cp src/Newton/lib/libnewton.a $(HOME_DIR)/$(INSTALL_DIR)/lib
 	cp src/Newton/lib/std/* $(HOME_DIR)/$(INSTALL_DIR)/lib/std
 
-
-	@# Creating Symbolic Link
-	ln -sf $(HOME_DIR)/$(INSTALL_DIR)/bin/newton $(BIN_DIR)/newton
-	ln -sf $(HOME_DIR)/$(INSTALL_DIR)/bin/nnpm $(BIN_DIR)/nnpm
-
 	@# Compiling newton script file (for .nts files)
 	@# Needs to be compiled AFTER newton is already installed as it is written in itself
-	newton src/Newton/bootstrap/newton-script/newton-script.nt -o src/Newton/newton@core__script.component --verbose --noStdlib
+	$(BIN_DIR)/newton src/Newton/bootstrap/newton-script/newton-script.nt -o src/Newton/newton@core__script.component --verbose --noStdlib
 	cp src/Newton/newton@core__script.component $(HOME_DIR)/$(INSTALL_DIR)/bin/newton@core__script.component
 
 	@# Cleanup
 	rm -f src/Newton/newton
 	rm -f src/Newtonian/nnpm
 	rm -f src/Newton/newton@core__script.component
+	rm -f src/Newton/lib/libnewton.o
+	rm -f src/Newton/lib/libnewton.a
 
 	@# Path Check
 	@echo ""
@@ -149,13 +152,6 @@ install: src/Newton/newton
 		echo "    \$$env.PATH = (\$$env.PATH | split row (char esep) | append '$(BIN_DIR)')"; \
 		echo "========================================"; \
 	fi
-
-install-GVM:
-	git clone -b Nightly https://github.com/Healing-A-Dev/GravityVM.git build
-	$(MAKE) -C build build HINTS="--hints:on"
-	rm -rf build
-	gvm clean-cache
-
 
 clean:
 	rm -f $(RUNTIME_OBJS_LINUX) $(RUNTIME_OBJS_WINDOWS) src/Newton/lib/libnewton.o src/Newton/lib/libnewton.dll src/Newton/lib/libnewton.a src/Newton/newton

@@ -35,28 +35,19 @@ runtime_net_close: push %rbp; mov %rsp, %rbp; sar $1, %rdi; mov $3, %rax; syscal
 .global runtime_net_connect
 runtime_net_connect:
     push %rbp; mov %rsp, %rbp; sub $32, %rsp
-    
-    sar $1, %rdi     # Untag FD
-    sar $1, %rsi     # Untag Port
-    sar $1, %rdx     # Untag IP
-    
-    # 1. Byte-swap the port (htons)
+    sar $1, %rdi
+    sar $1, %rsi
+    sar $1, %rdx
     mov %rsi, %rax
     xchg %al, %ah
-    mov %ax, -14(%rbp)     # sin_port
-    
-    # 2. Build sockaddr_in struct
-    movw $2, -16(%rbp)     # sin_family = AF_INET (2)
-    movl %edx, -12(%rbp)   # sin_addr = IP Address
-    movq $0, -8(%rbp)      # Padding
-    
-    # 3. Syscall 42: connect
+    mov %ax, -14(%rbp)
+    movw $2, -16(%rbp)
+    movl %edx, -12(%rbp)
+    movq $0, -8(%rbp)
     mov $42, %rax
-    lea -16(%rbp), %rsi    # Pointer to struct
-    mov $16, %rdx          # Struct length
+    lea -16(%rbp), %rsi
+    mov $16, %rdx
     syscall
-    
-    # Tag the return status so Newton can securely check 'if status < 0'
     shl $1, %rax
     or $1, %rax
     leave; ret
@@ -66,21 +57,13 @@ runtime_net_connect:
 runtime_net_sendfile:
     push %rbp
     mov %rsp, %rbp
-    
-    sar $1, %rdi      # Untag client_fd (out_fd)
-    sar $1, %rsi      # Untag file_fd (in_fd)
-    sar $1, %rdx      # Untag size
-    
-    # Linux sys_sendfile expects:
-    # rdi = out_fd, rsi = in_fd, rdx = offset ptr, r10 = count
-    mov %rdx, %r10    # Move size to %r10
-    mov $0, %rdx      # Set offset pointer to NULL (reads from current pos)
-    
-    mov $40, %rax     # syscall 40: sendfile
+    sar $1, %rdi
+    sar $1, %rsi
+    sar $1, %rdx
+    mov %rdx, %r10
+    mov $0, %rdx
+    mov $40, %rax
     syscall
-    
-    # Tag the return status (number of bytes written, or negative error)
     shl $1, %rax
     or $1, %rax
-    
     leave; ret

@@ -1,0 +1,18 @@
+
+; Filename: crypt.nt
+; Description: Cyrptography module for Newton's standard library
+; Date: April 13th, 2026
+fun hash: @args str
+	set hash: 05793
+	set len: sizeof $str
+	set i: 0
+
+	while $i < $len:
+		set char: substring $str, $i, 1
+		set char_code: String.ascii $char
+		set temp: $hash * 33
+		hash: $temp + $char_code
+		i: $i + 1
+	end
+	return ["ok", $hash]
+end

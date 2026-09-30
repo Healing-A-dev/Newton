@@ -1,4 +1,4 @@
-using std::OS
+using std::os
 using lexer
 using ast
 using errors
@@ -48,13 +48,13 @@ fun consume: @args p, k, err
 end
 
 fun resolveModulePath: @args pathParts
-  set relativePath: (Collection.Join $pathParts, "/") << ".nt"
+  set relativePath: (Collection.join $pathParts, "/") << ".nt"
   set libPath: "lib" << "/" << $relativePath
 
   if fileExists $relativePath: return [@ok, $relativePath] end
   if fileExists $libPath: return [@ok, $libPath] end
 
-  set envPath: OS.Getenv "NEWTON_PATH"
+  set envPath: os.getenv "NEWTON_PATH"
   if ($envPath != "") and (fileExists $envPath << "/" << $relativePath):
     return [@ok, $envPath << "/" << $relativePath]
   end
@@ -74,20 +74,20 @@ fun parsePrimary: @args p
 
   if $t{"kind"} == $enum.tokNumberLit:
     parser.advance $p
-    set node: ast.AstNode $enum.nkLiteral
+    set node: ast.astNode $enum.nkLiteral
     node{"strVal"}: $t{"lexeme"}
     node{"isString"}: 0
     return [@ok, $node]
 
   elseif $t{"kind"} == $enum.tokFloatLit:
     parser.advance $p
-    set node: ast.AstNode $enum.nkFloatLit
+    set node: ast.astNode $enum.nkFloatLit
     node{"strVal"}: $t{"lexeme"}
     return [@ok, $node]
 
   elseif $t{"kind"} == $enum.tokStringLit:
     parser.advance $p
-    set node: ast.AstNode $enum.nkLiteral
+    set node: ast.astNode $enum.nkLiteral
     node{"strVal"}: $t{"lexeme"}
     node{"isString"}: 1
     return [@ok, $node]
@@ -124,15 +124,15 @@ fun parsePrimary: @args p
       parser.advance $p
     end
     parser.consume $p, $enum.tokRBracket, "Expected ']'"
-    set node: ast.AstNode $enum.nkBracket
+    set node: ast.astNode $enum.nkBracket
     node{"children"}: $elements
     return [@ok, $node]
 
   elseif $t{"kind"} == $enum.tokMinus:
     parser.advance $p
     set val: parser.parsePrimary $p
-    set node: ast.AstNode $enum.nkBinaryOp
-    set left: ast.AstNode $enum.nkLiteral
+    set node: ast.astNode $enum.nkBinaryOp
+    set left: ast.astNode $enum.nkLiteral
     left{"strVal"}: "0"
     node{"op"}: "-"
     node{"left"}: $left
@@ -142,8 +142,8 @@ fun parsePrimary: @args p
   elseif $t{"kind"} == $enum.tokNot:
     parser.advance $p
     set val: parser.parsePrimary $p
-    set node: ast.AstNode $enum.nkBinaryOp
-    set left: ast.AstNode $enum.nkLiteral
+    set node: ast.astNode $enum.nkBinaryOp
+    set left: ast.astNode $enum.nkLiteral
     left{"strVal"}: "0"
     node{"op"}: "not"
     node{"left"}: $left
@@ -159,7 +159,7 @@ fun parsePrimary: @args p
       prop: $prop{"lexeme"}
       name: $name << "_" << $prop
     end
-    set baseNode: ast.AstNode $enum.nkVarRef
+    set baseNode: ast.astNode $enum.nkVarRef
     set baseline: parser.peek $p, 0
     baseNode{"refName"}: $name
     baseNode{"line"}: $baseline{"line"}
@@ -170,14 +170,14 @@ fun parsePrimary: @args p
       if $tok{"kind"} == $enum.tokIdentifier:
         set keyId: parser.advance $p
         keyId: $keyId{"lexeme"}
-        keyNode: ast.AstNode $enum.nkLiteral
+        keyNode: ast.astNode $enum.nkLiteral
         keyNode{"strVal"}: $keyId
         keyNode{"isString"}: 1
       else:
         keyNode: parser.parseExpression $p
       end
       parser.consume $p, $enum.tokRBrace, "Expected '}'"
-      baseNode: ast.AstNode $enum.nkMapGet
+      baseNode: ast.astNode $enum.nkMapGet
       baseNode{"targetMap"}: $baseNode
       baseNode{"targetKey"}: $keyNode
     end
@@ -189,7 +189,7 @@ fun parsePrimary: @args p
     set name: "MACRO_" << $__temp__{"lexeme"}
     set args: []
 
-    if (parser.pmatch $p, $enum.tokLParen):
+    if parser.pmatch $p, $enum.tokLParen:
       set tok: parser.peek $p, 0
       if $tok{"kind"} != $enum.tokRParen:
         push $args, (parser.parseExpression $p)
@@ -199,19 +199,6 @@ fun parsePrimary: @args p
       end
       parser.consume $p, $enum.tokRParen, "Expected ')'"
     else:
-      set peeked: parser.peek $p, 0
-      match $peeked:
-        $enum.tokNumberLit  -> push $args, (parser.parseExpression $p)
-        $enum.tokFloatLit   -> push $args, (parser.parseExpression $p)
-        $enum.tokStringLit  -> push $args, (parser.parseExpression $p)
-        $enum.tokDollar     -> push $args, (parser.parseExpression $p)
-        $enum.tokAmpersand  -> push $args, (parser.parseExpression $p)
-        $enum.tokIdentifier -> push $args, (parser.parseExpression $p)
-        $enum.tokInput      -> push $args, (parser.parseExpression $p)
-        $enum.tokLBracket   -> push $args, (parser.parseExpression $p)
-        $enum.tokLParen     -> push $args, (parser.parseExpression $p)
-        $enum.tokMacroRef   -> push $args, (parser.parseExpression $p)
-      end
     end
   end
 end

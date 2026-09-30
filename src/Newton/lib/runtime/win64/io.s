@@ -27,14 +27,12 @@
 
 .section .text
 
-# ==================================================
-# 1. PURE NEWTON LOGIC (OS Agnostic Formatting)
-# ==================================================
 .global print_string
 print_string:
     push %rbp; mov %rsp, %rbp; push %rbx
     test %rdi, %rdi; jnz .Lps_valid
     mov $1, %rdi
+
 .Lps_valid:
     test $1, %rdi; jnz .Lprint_int
     mov -8(%rdi), %rax
@@ -43,17 +41,22 @@ print_string:
     cmp $3, %rax; je .Lprint_array
     cmp $2, %rax; je .Lprint_map
     jmp .Lps_done
+
 .Lprint_int:
     call int_to_string
     mov %rax, %rdi
+
 .Lprint_str:
     call print_raw_os
     jmp .Lps_done
+
 .Lprint_array:
     call print_array_inline
     jmp .Lps_done
+
 .Lprint_map:
     call print_map_inline
+
 .Lps_done:
     pop %rbx; leave; ret
 
@@ -64,15 +67,18 @@ print_array_inline:
     lea .Lstr_bracket_l(%rip), %rdi; call print_raw_os
     mov 0(%r12), %r13
     lea 8(%r12), %r14
+
 .Lpai_loop:
     test %r13, %r13; jz .Lpai_done
     mov (%r14), %rdi; call print_string
     cmp $1, %r13; je .Lpai_skip_comma
     lea .Lstr_comma(%rip), %rdi; call print_raw_os
+
 .Lpai_skip_comma:
     add $8, %r14
     dec %r13
     jmp .Lpai_loop
+
 .Lpai_done:
     lea .Lstr_bracket_r(%rip), %rdi; call print_raw_os
     pop %r14; pop %r13; pop %r12
@@ -83,6 +89,7 @@ print_map_inline:
     push %r12; push %r13
     mov 0(%rdi), %r12
     lea .Lstr_paren_l(%rip), %rdi; call print_raw_os
+
 .Lpmi_loop:
     test %r12, %r12; jz .Lpmi_done
     mov 0(%r12), %rdi; call print_string
@@ -92,6 +99,7 @@ print_map_inline:
     test %r12, %r12; jz .Lpmi_loop
     lea .Lstr_comma(%rip), %rdi; call print_raw_os
     jmp .Lpmi_loop
+
 .Lpmi_done:
     lea .Lstr_paren_r(%rip), %rdi; call print_raw_os
     pop %r13; pop %r12
@@ -119,18 +127,15 @@ sys_log_err:
     pop %r15; pop %r14; pop %r13; pop %r12
     leave; ret
 
-
-# ==================================================
-# 2. WINDOWS KERNEL32 API BRIDGES
-# ==================================================
-
 .Lstring_len_native:
     xor %rax, %rax
+
 .Lsln_loop:
     cmpb $0, (%rdi, %rax)
     je .Lsln_done
     inc %rax
     jmp .Lsln_loop
+
 .Lsln_done:
     ret
 
@@ -138,24 +143,21 @@ sys_log_err:
 print_raw_os:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12
-
-    # 64 bytes for Shadow Space, Local Variables, and Alignment
     sub $64, %rsp
     and $-16, %rsp
+    mov %rdi, %rbx
+    xor %r12, %r12
 
-    mov %rdi, %rbx       # Save string pointer
-    xor %r12, %r12       # Length counter = 0
 .Lpro_len:
     cmpb $0, (%rbx, %r12)
     je .Lpro_do
     inc %r12
     jmp .Lpro_len
+
 .Lpro_do:
-    # 1. GetStdHandle(-11 = STD_OUTPUT_HANDLE)
     mov $-11, %rcx
     call GetStdHandle
 
-    # 2. WriteFile(hFile, lpBuffer, nBytesToWrite, lpBytesWritten, lpOverlapped)
     mov %rax, %rcx
     mov %rbx, %rdx
     mov %r12, %r8
@@ -163,7 +165,6 @@ print_raw_os:
     movq $0, 32(%rsp)
     call WriteFile
 
-    # 3. Safely Restore Stack and Registers
     lea -16(%rbp), %rsp
     pop %r12
     pop %rbx
@@ -174,48 +175,47 @@ sys_access:
     push %rbp; mov %rsp, %rbp
     sub $32, %rsp
     and $-16, %rsp
-
     mov %rdi, %rcx
     call GetFileAttributesA
 
-    cmp $-1, %rax        # Check for INVALID_FILE_ATTRIBUTES
+    cmp $-1, %rax
     je .Lacc_fail
     mov $0, %rax
     jmp .Lacc_done
+
 .Lacc_fail:
     mov $-1, %rax
-.Lacc_done:
-    shl $1, %rax; or $1, %rax  # Tag return code
-    leave; ret
 
+.Lacc_done:
+    shl $1, %rax; or $1, %rax
+    leave; ret
 
 .global sys_mkdir
 sys_mkdir:
     push %rbp; mov %rsp, %rbp
     sub $32, %rsp
     and $-16, %rsp
-
     mov %rdi, %rcx
-    mov $0, %rdx         # NULL Security Attributes
+    mov $0, %rdx
     call CreateDirectoryA
 
     test %rax, %rax
     jz .Lmkdir_fail
     mov $0, %rax
     jmp .Lmkdir_done
+
 .Lmkdir_fail:
     mov $-1, %rax
+
 .Lmkdir_done:
     shl $1, %rax; or $1, %rax
     leave; ret
-
 
 .global sys_unlink
 sys_unlink:
     push %rbp; mov %rsp, %rbp
     sub $32, %rsp
     and $-16, %rsp
-
     mov %rdi, %rcx
     call DeleteFileA
 
@@ -223,8 +223,10 @@ sys_unlink:
     jz .Lunlink_fail
     mov $0, %rax
     jmp .Lunlink_done
+
 .Lunlink_fail:
     mov $-1, %rax
+
 .Lunlink_done:
     shl $1, %rax; or $1, %rax
     leave; ret
@@ -235,10 +237,7 @@ sys_file_size:
     push %rbp; mov %rsp, %rbp
     sub $48, %rsp
     and $-16, %rsp
-
-    sar $1, %rdi          # Untag the Windows HANDLE
-
-    # GetFileSizeEx(hFile, &lpFileSize)
+    sar $1, %rdi
     mov %rdi, %rcx
     lea 32(%rsp), %rdx
     call GetFileSizeEx
@@ -246,10 +245,12 @@ sys_file_size:
     test %rax, %rax
     jz .Lfsize_fail
 
-    mov 32(%rsp), %rax    # Load the resulting size
+    mov 32(%rsp), %rax
     jmp .Lfsize_done
+
 .Lfsize_fail:
     mov $-1, %rax
+
 .Lfsize_done:
     shl $1, %rax; or $1, %rax
     leave; ret

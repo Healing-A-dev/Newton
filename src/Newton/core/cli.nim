@@ -1,6 +1,6 @@
 import os, strutils, osproc
 
-const VERSION*: string = "0.5.1 [BETA]"
+const VERSION*: string = "0.6.0 [BETA]"
 
 type STATES* = tuple [
     State: string,
@@ -10,6 +10,7 @@ type STATES* = tuple [
     Fallback: string,
     Intermidiates: string,
     LinkerFiles: seq[string],
+    RunArguments: seq[string],
     ObjectOutput: string,
     Verbose: string,
     TargetOS: string,
@@ -23,28 +24,29 @@ Newton Programming Language
 Usage: newton <command> [<args>] [<flags>]
 
 commands:
-   init <name>    > Initialize a new Newton project skeleton
-   build <file>   > Compile a Newton file or project [default]
-   run <file>     > Compile and run immediately
-   help           > Display this message
-   version        > Display the installed build version
+   init <name>    > Initialize a new Newton project skeleton.
+   build <file>   > Compile a Newton file or project. [default]
+   run <file>     > Compile and run immediately.
+   help           > Display this message.
+   version        > Display the installed build version.
 
 options:
-   -o | --output   > Specify the output binary name
-   -b | --build    > Specify the compiler backend (native, c, webasm)
+   -b | --build    > Specify the compiler backend (native, c, webasm).
    -f | --fallback > Specify a backend to fallback to in case of compilation errors.
-   -p | --platform > Specify the target platform (win64, linux, darwin)
-   -v | --verbose  > Enable verbose compiler output
+   -o | --output   > Specify the output binary name.
+   -p | --platform > Specify the target platform (win64, linux, darwin).
+   -r | --run      > Compile and immediately run the specified file.
+   -v | --verbose  > Enable verbose compiler output.
 
 advanced flags:
-   --keep-intermidiates > Keep all generated intermediate files
-   --debug              > Generate debug information instead of compiling
-   --link-C             > Link with C
-   --script             > Treat the given file as a newton script file (.nts)
+   --keep-intermidiates > Keep all generated intermediate files.
+   --debug              > Generate debug information instead of compiling.
+   --link-C             > Link with C.
+   --script             > Treat the given file as a newton script file (.nts).
    --noStdlib           > Prevents the standard library from being automatically imported.
-   -L                   > Specify a file to link with
-   -O                   > Compile to an object file
-   -GVM                 > Stop compilation at GravityVM bytecode
+   -L                   > Specify a file to link with.
+   -O                   > Compile to an object file.
+   -GVM                 > Stop compilation at GravityVM bytecode generation.
 """
 
 # --- Scaffolding Engine ---
@@ -56,8 +58,8 @@ proc initProject(name: string) =
   createDir(dir / "bin")
 
   # Generate standard library entry point
-  let mainCode = "fun main:\n    IO.Std_Println \"Hello World!\"\nend\n"
-  writeFile(dir / "src" / "Main.nt", mainCode)
+  let mainCode = "fun main:\n    @println \"Hello World!\"\nend\n"
+  writeFile(dir / "src" / "main.nt", mainCode)
 
   # Generate .gitignore
   let gitignore = "packages/\nbin/\n*.o\n"
@@ -68,7 +70,7 @@ proc initProject(name: string) =
 [Project]
 name = "$#"
 version = "0.1.0"
-entrypoint = "src/Main.nt"
+entrypoint = "src/main.nt"
 
 [Packages]
 """ % [dir]
@@ -134,43 +136,43 @@ proc parseArgs*(ARGS: seq[string]): STATES =
     of "--debug":
       DATA.State = "disassemble"
     of "-p", "--platform":
-      DATA.TargetOS = "-P:" & ARGS[counter + 1]
+      DATA.TargetOS = "-p:" & ARGS[counter + 1]
       counter.inc
     of "-v", "--verbose":
       DATA.Verbose = "-verbose:true"
-    of "-L":
+    of "-l":
       if ARGS[counter + 1].len >= 2:
         case ARGS[counter + 1][^2..^1]
         of ".o", ".a":
-          DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+          DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
           counter.inc
         else:
           if ARGS[counter + 1].contains(".so."):
-            DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+            DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
             counter.inc
           else:
             if linkedC == false:
-              DATA.LinkerFiles.add("-L:-lc")
-              DATA.LinkerFiles.add("-L:--dynamic-linker")
-              DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+              DATA.LinkerFiles.add("-l:-lc")
+              DATA.LinkerFiles.add("-l:--dynamic-linker")
+              DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
               linkedC = true
             if ARGS[counter + 1].endsWith(".so"):
-              DATA.LinkerFiles.add("-L:" & ARGS[counter + 1])
+              DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
               counter.inc
             else:
-              DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
+              DATA.LinkerFiles.add("-l:-l" & ARGS[counter + 1])
             counter.inc
       else:
-        DATA.LinkerFiles.add("-L:-l" & ARGS[counter + 1])
+        DATA.LinkerFiles.add("-l:-l" & ARGS[counter + 1])
         counter.inc
     of "--link-C":
       if linkedC == false:
-        DATA.LinkerFiles.add("-L:-lc")
-        DATA.LinkerFiles.add("-L:--dynamic-linker")
-        DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+        DATA.LinkerFiles.add("-l:-lc")
+        DATA.LinkerFiles.add("-l:--dynamic-linker")
+        DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
         linkedC = true
     of "--noStdlib":
-      Data.noStdlib = true
+      DATA.noStdlib = true
     of "--script":
       DATA.isScript = true
     of "-O":
@@ -181,7 +183,9 @@ proc parseArgs*(ARGS: seq[string]): STATES =
       DATA.Backend = "-b:gravity"
     else:
       if DATA.Input == "" and not arg.startsWith("-"):
-          DATA.Input = arg
+        DATA.Input = arg
+      else:
+        DATA.RunArguments.add("-a:" & arg)
     counter.inc
 
   # Auto-detect .Newtonproj.toml and auto-link packages
@@ -206,10 +210,9 @@ proc parseArgs*(ARGS: seq[string]): STATES =
               continue
 
           elif currentSection == "linkerfiles":
-              DATA.LinkerFiles.add("-L:" & line)
+              DATA.LinkerFiles.add("-l:" & line)
               continue
 
-          # --- ORIGINAL: Handle key=value sections ---
           let parts = line.split("=", 1)
           if parts.len == 2:
               let key = parts[0].strip()
@@ -228,16 +231,16 @@ proc parseArgs*(ARGS: seq[string]): STATES =
                       elif key == "script":  DATA.isScript = true
                       elif key == "verbose": DATA.Verbose  = "-verbose:true"
                       elif key == "link-C":
-                         DATA.LinkerFiles.add("-L:-lc")
-                         DATA.LinkerFiles.add("-L:-lm")
-                         DATA.LinkerFiles.add("-L:--dynamic-linker")
-                         DATA.LinkerFiles.add("-L:/lib64/ld-linux-x86-64.so.2")
+                         DATA.LinkerFiles.add("-l:-lc")
+                         DATA.LinkerFiles.add("-l:-lm")
+                         DATA.LinkerFiles.add("-l:--dynamic-linker")
+                         DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
                          linkedC = true
 
               elif currentSection == "packages":
                   let pkgObj = "packages" / key & ".o"
                   if fileExists(pkgObj):
-                      DATA.LinkerFiles.add("-L:" & pkgObj)
+                      DATA.LinkerFiles.add("-l:" & pkgObj)
 
   if DATA.Input == "" and DATA.State != "help":
       echo "\e[1;31merror:\e[0m no input file provided or .Newtonproj.toml found."

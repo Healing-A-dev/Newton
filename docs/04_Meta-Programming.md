@@ -10,7 +10,7 @@ Macros are expanded by the compiler before the Virtual Machine ever sees them. T
 
 ```asm
 defmacro logBuild:
-    IO.Std_Println "[BUILD STEP COMPLETED]"
+    IO.println "[BUILD STEP COMPLETED]"
 end
 
 fun main:

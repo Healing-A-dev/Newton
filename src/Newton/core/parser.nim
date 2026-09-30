@@ -61,7 +61,7 @@ proc resolveModulePath(pathParts: seq[string]): string =
   if fileExists(exeDir / relativePath): return exeDir / relativePath
   if fileExists(exeDir / "lib" / relativePath): return exeDir / "lib" / relativePath
 
-  let userLocalPath = getHomeDir() / ".local" / "lib" / "newton"
+  let userLocalPath = getHomeDir() / ".newton"
   if fileExists(userLocalPath / relativePath): return userLocalPath / relativePath
   if fileExists(userLocalPath / "lib" / relativePath): return userLocalPath / "lib" / relativePath
 

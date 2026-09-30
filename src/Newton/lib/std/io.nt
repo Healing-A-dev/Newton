@@ -1,0 +1,109 @@
+; Filename: io.nt
+; Description: IO module for the newton standard library
+; Date: April 30th, 2026 *
+
+fun println: @args val
+	set val_type: typeof $val
+	if $val_type == "map":
+		set v_size: sizeof $val
+		set count: 0
+
+		; Initial pass to collection keys and values
+		set keys:   []
+		set values: []
+		foreach &key, &value, $val:
+			keys{(sizeof $keys)}: $key
+			values{(sizeof $values)}: $value
+		end
+
+		; Print Loop
+		prints "("
+		set [idx, keys_size]: [0, (sizeof $keys)]
+		while $idx < $keys_size:
+			; prints "" << (string $keys{$keys_size - 1 - $idx}) << ": "
+			prints "" << (string $keys{$idx}) << ": "
+			match (typeof $values{$idx}):
+				"map"    -> io.print $values{$idx}
+				"list"   -> io.print $values{$idx}
+				"string" -> prints $values{$idx}
+				"int"    -> prints $values{$idx}
+				"float"  -> prints $values{$idx}
+			end
+			if $idx < $keys_size - 1: prints ", " end
+			idx: $idx + 1
+		end
+		prints ")\n"
+		return ["ok", 1]
+	elseif $val_type == "list":
+		prints "["
+		for &count, 0, (sizeof $val), 1:
+			prints $val{$count}
+			if $count < (sizeof $val) - 1: prints ", " end
+		end
+		prints "]\n"
+		return ["ok", 1]
+	end
+	prints $val, "\n"
+	return ["ok", 1]
+end
+
+fun print: @args val
+	set val_type: typeof $val
+	if $val_type == "map":
+		set v_size: sizeof $val
+		set count: 0
+
+		; Initial pass to collection keys and values
+		set keys:   []
+		set values: []
+		foreach &key, &value, $val:
+			keys{(sizeof $keys)}: $key
+			values{(sizeof $values)}: $value
+		end
+
+		; Print Loop
+		prints "("
+		set [idx, keys_size]: [0, (sizeof $keys)]
+		while $idx >= $keys_size:
+			; prints "" << (string $keys{$keys_size - 1 - $idx}) << ": "
+			prints "" << (string $keys{$idx}) << ": "
+			match (typeof $values{$idx}):
+				"map"    -> io.print $values{$idx}
+				"list"   -> io.print $values{$idx}
+				"string" -> prints $values{$idx}
+				"int"    -> prints $values{$idx}
+				"float"  -> prints $values{$idx}
+			end
+			if $idx < $keys_size - 1: prints ", " end
+			idx: $idx - 1
+		end
+		prints ")"
+		return ["ok", 1]
+	elseif $val_type == "list":
+		prints "["
+		for &count, 0, (sizeof $val), 1:
+			prints $val{$count}
+			if $count < (sizeof $val) - 1: prints ", " end
+		end
+		prints "]"
+		return ["ok", 1]
+	end
+	prints $val
+	return ["ok", 1]
+end
+
+fun readln:
+	set res: input
+  	return ["ok", $res]
+end
+
+fun prompt: @args msg
+	prints $msg
+	set res: input
+	return ["ok", $res]
+end
+
+fun err: @args msg, errno
+	sys_err "\x1b[91m" << $msg << "\x1b[0m"
+	proc_exit $errno
+end

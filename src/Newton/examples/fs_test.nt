@@ -1,18 +1,12 @@
-using std::IO
-using std::File
-
-| Native read_file test
+; Native read_file test
 fun main:
-    IO.println "Testing File System..."
+    @println "Testing File System..."
 
-    | 1. Read existing file
     set content: read_file "index.html"
-    IO.println "Read " << string (sizeof $content) << " bytes."
-    IO.println "Content Preview:  " <<  $content
+    @println "Read " << string (sizeof $content) << " bytes."
+    @println "Content Preview:  " <<  $content
 
-    | 2. Read missing file (Should not crash)
     set missing: read_file "does_not_exist.txt"
-    IO.println "Missing file length: " << string (sizeof $missing)
-
-    IO.println "Test Complete."
+    @println "Missing file length: " << string (sizeof $missing)
+    @println "Test Complete."
 end
