@@ -114,6 +114,9 @@ proc parseArgs*(ARGS: seq[string]): STATES =
   elif cmd == "version":
     echo "newton " & VERSION
     quit(0)
+  elif cmd == "self-update":
+    echo "WIP"
+    quit(0)
   else:
      # Fallback to old behavior for backwards compatibility
      if not cmd.startsWith("-"): DATA.Input = cmd

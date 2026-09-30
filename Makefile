@@ -110,14 +110,10 @@ install: src/Newton/newton
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/lib/std
 
 	@# Installing GravityVM
-	@#ifeq ($(filter install-GVM,$(MAKECMDGOALS)),)
-	@#ifeq ($(strip $(HAS_GVM)),)
 	rm -rf $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm
 	git clone -b Nightly https://github.com/Healing-A-Dev/GravityVM.git $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm
 	$(MAKE) -C $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm HINTS="--hints:on"
 	$(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm/gvm clean-cache
-	@#endif
-	@#endif
 
 	@# Moving Files
 	cp src/Newton/newton $(HOME_DIR)/$(INSTALL_DIR)/bin/newton
