@@ -8,9 +8,9 @@ Standard functions in Newton map directly to hardware-level `CALL` instructions,
 
 Macros are expanded by the compiler before the Virtual Machine ever sees them. To distinguish a macro from a standard function during execution, **macros must be invoked using the `@` prefix**.
 
-```asm
+```crystal
 defmacro logBuild:
-    IO.println "[BUILD STEP COMPLETED]"
+    @println "[BUILD STEP COMPLETED]"
 end
 
 fun main:
@@ -32,7 +32,7 @@ By checking `sizeof $M_ARGV`, you can create highly flexible APIs. The Newton St
 
 Here is a simplified version of Newton's native `@assert` macro. Notice how it uses `$M_ARGV{0}` for the condition and `$M_ARGV{1}` for the optional error message.
 
-```asm
+```crystal
 defmacro assert:
     ; Extract the first two arguments from the variadic array
     set stmt: $M_ARGV{0}
@@ -60,7 +60,7 @@ Newton's AST handles specific prefix operators directly rather than relying on s
 
 When you use a negative sign (`-`) in front of a number, or the `not` keyword in front of a boolean expression, the compiler optimizes these operations directly at the AST level. This ensures that fundamental operations—such as negating a loop counter or inverting a state flag—are processed efficiently without introducing unnecessary runtime overhead.
 
-```asm
+```crystal
 fun main:
     set is_valid: 1
 
@@ -73,3 +73,8 @@ fun main:
     set offset: -50
 end
 ```
+
+---
+
+Next: [5. Ecosystem & Structure](05_Ecosystem-And-Structure.md)
+

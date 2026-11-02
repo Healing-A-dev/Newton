@@ -25,7 +25,8 @@ CORE_SRCS = src/Newton/core/ast.nim     \
 			src/Newton/core/errors.nim  \
 			src/Newton/core/lexer.nim   \
 			src/Newton/core/main.nim    \
-			src/Newton/core/parser.nim
+			src/Newton/core/parser.nim  \
+			src/Newton/core/lsp.nim
 
 STD_SRC = src/Newton/lib/Std/File.nt       \
 		  src/Newton/lib/Std/Collection.nt \
@@ -108,6 +109,7 @@ install: src/Newton/newton
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/bin
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/toolchains
 	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/lib/std
+	mkdir -p $(HOME_DIR)/$(INSTALL_DIR)/include
 
 	@# Installing GravityVM
 	rm -rf $(HOME_DIR)/$(INSTALL_DIR)/toolchains/gvm
@@ -121,6 +123,7 @@ install: src/Newton/newton
 	cp src/Newton/lib/libnewton.o $(HOME_DIR)/$(INSTALL_DIR)/lib
 	cp src/Newton/lib/libnewton.a $(HOME_DIR)/$(INSTALL_DIR)/lib
 	cp src/Newton/lib/std/* $(HOME_DIR)/$(INSTALL_DIR)/lib/std
+	cp src/Newton/include/* $(HOME_DIR)/$(INSTALL_DIR)/include
 
 	@# Compiling newton script file (for .nts files)
 	@# Needs to be compiled AFTER newton is already installed as it is written in itself

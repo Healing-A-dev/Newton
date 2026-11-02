@@ -6,7 +6,7 @@ The Newton compiler is completely agnostic to how you format or case your code. 
 
 All user-defined functions and macros should use **lower camelCase**.
 
-```asm
+```crystal
 ; User-defined function (lower camelCase)
 fun calculateTotal: @args a, b
     return $a + $b
@@ -26,7 +26,7 @@ Global variables (those ending in `*`) follow two different naming conventions d
 
 If a global variable acts as a constant and is never intended to be reassigned, use **UPPER_SNAKE_CASE**. Although Newton does not currently provide a `const` keyword, this convention signals to other developers that the value should remain unchanged.
 
-```asm
+```crystal
 ; Pseudo-Constant (Never reassigned)
 set MAX_BUFFER_SIZE*: 1024
 ```
@@ -35,7 +35,7 @@ set MAX_BUFFER_SIZE*: 1024
 
 If a global variable represents state that changes during execution, use **lower camelCase**.
 
-```asm
+```crystal
 ; Mutable Global State
 set activeConnectionCount*: 0
 ```
@@ -44,7 +44,7 @@ set activeConnectionCount*: 0
 
 Local variables declared inside functions or other scoped blocks should use **snake_case**. This visually distinguishes local state from functions and global variables.
 
-```asm
+```crystal
 fun processData:
     ; Local variables in snake_case
     set user_name: "Alice"
@@ -58,7 +58,7 @@ If you need a temporary or implementation-detail variable—such as a loop index
 
 This convention makes it immediately obvious that the variable is not intended for use outside the current implementation.
 
-```asm
+```crystal
 fun reverseList: @args list
     ; Temporary internal array
     set __temp_arr__: []
@@ -74,3 +74,8 @@ fun reverseList: @args list
     return $__temp_arr__
 end
 ```
+
+---
+
+Next: [7. C FFI Integration](07_FFI.md)
+

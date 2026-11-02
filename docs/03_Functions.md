@@ -1,80 +1,141 @@
 # 3. Functions, Scope, and TCO
 
-Newton treats functions as first-class citizens. Thanks to the `Base.nt` prelude, core modules like `IO`, `String`, and `File` are automatically included in every project (unless you compile with `--noStdlib`), keeping your code clean and free of boilerplate.
+Newton treats functions as first-class citizens. Functions can be called directly, passed as arguments, assigned to variables, and exported directly to external C libraries.
+
+---
 
 ## Defining Functions and Arguments
 
 Functions are defined using the `fun` keyword and closed with `end`.
 
-To define parameters, use the `@args` macro immediately after the function declaration. Multiple arguments are separated by commas.
+To declare parameters, use the `@args` macro immediately after the function declaration. Multiple arguments are separated by commas:
 
-```asm
-
-
+```crystal
 fun greetUser: @args name, role
     @println "Welcome back, {}! Your role is: {}", $name, $role
 end
 
-fun example:
-    ; This is also valid function declaration syntax (although not preferd).
-    ; As long @args is the first uncommented line of code within the function, it is valid.
-    @args arg1, arg2, arg3
-
-    ; <Documentation Stuff>
-    @println "{} {} {}", $arg1, $arg2, $arg3
+fun calculateTotal: @args price, quantity, tax_rate
+    set subtotal: $price * $quantity
+    set total: $subtotal + ($subtotal * $tax_rate)
+    return $total
 end
 
 fun main:
-    ; Calling a statically defined function
-    greet_user "Alice", "Admin"
-    example "Foo", "Bar", "Baz"
+    greetUser "Alice", "Admin"
+    set total: calculateTotal 100, 2, 0.05
+    @println "Final Total: {}", $total
 end
 ```
 
-## Scope and Empty Blocks
+### Parameter-Free Functions
 
-By default, any variable declared inside a function (using `set`) is strictly scoped to that function. It is destroyed when the function returns, ensuring Newton's memory footprint remains incredibly low.
+Functions that do not take arguments omit the `@args` statement entirely:
 
-If you need to define an empty function or an empty `if` block (for example, while scaffolding a project), you can leave it entirely blank. Optionally, you can use the `pass` function provided by the standard library.
-
-```asm
-fun futureFeature:
+```crystal
+fun printHeader:
+    @println "=============================="
+    @println "   Newton Application v1.0    "
+    @println "=============================="
 end
 
 fun main:
-    set data: "pending"
-
-    if $data == "pending":
-        pass
-    else:
-        @println "Processing data..."
-    end
+    printHeader
 end
 ```
+
+---
+
+## Return Values
+
+Use the `return` keyword to pass values back to the caller:
+
+```crystal
+fun add: @args a, b
+    return $a + $b
+end
+
+fun getStatus:
+    return "ready"
+end
+```
+
+If a function reaches `end` without an explicit `return`, it implicitly returns 0 (false).
+
+---
+
+## Scope and Lifetime
+
+Variables declared with `set` inside a function are strictly local to that function. Local variables live in the function's stack frame and are destroyed upon returning.
+
+```crystal
+fun compute:
+    set local_val: 42
+    @println "Local value: {}", $local_val
+end
+
+fun main:
+    compute
+    ; $local_val is not accessible here
+end
+```
+
+---
+
+## Exporting Functions to C (`exposed fun`)
+
+To make a Newton function callable from external C libraries or native host code, use the `exposed fun` keyword:
+
+```crystal
+exposed fun newton_add: @args a, b
+    @println "[Newton] Adding {} and {}...", $a, $b
+    return $a + $b
+end
+```
+
+When you declare an `exposed fun`:
+1. The compiler emits a globally visible symbol named `F_<name>` (e.g. `F_newton_add`).
+2. Arguments are passed via standard CDECL stack conventions (pushed right-to-left).
+3. The return value is placed in the `%rax` register.
+4. C code can invoke the function directly using Newton's integration macros:
+   ```c
+   #include <newton.h>
+   extern void F_newton_add(void);
+
+   int64_t res = NEWTON_CALL_2(F_newton_add, NEWTON_BOX_INT(10), NEWTON_BOX_INT(20));
+   printf("Result from Newton: %ld\n", NEWTON_INT(res)); // Prints 30
+   ```
+
+*(See Chapter 7 for complete documentation on C FFI integration).*
+
+---
 
 ## Tail Call Optimization (TCO)
 
-One of Newton's most powerful architectural features is AST-level Tail Call Optimization (TCO).
+One of Newton's signature architectural features is AST-level Tail Call Optimization (TCO).
 
-In most languages, recursive functions add a new frame to the call stack every time they recurse, eventually causing a stack overflow. Newton's compiler detects when a function calls itself as its final action (a *tail call*) and transforms it into a highly optimized hardware `JMP` instruction.
+When a function calls itself as its final action (a *tail call*), Newton's compiler optimizes the call into an in-place hardware jump (`JMP`), completely reusing the existing stack frame.
 
-This means you can write deeply recursive functions in Newton without consuming additional stack frames, allowing recursion that would overflow the stack in many other languages.
+This allows you to write recursive algorithms without risk of stack overflow:
 
-```asm
+```crystal
 fun countdown: @args n
     if $n == 0:
         @println "Liftoff!"
-        return [@ok, 1]
+        return 0
     end
 
-    ; Because this is the very last operation, the Newton compiler
-    ; optimizes it into a flat jump. No stack frames are consumed!
+    ; Tail call: compiler replaces this with a flat jump!
     return countdown $n - 1
 end
 
 fun main:
-    ; This would overflow the stack in many scripting languages,
-    ; but Newton optimizes it into an iterative jump.
-    countdown 10000000
+    ; Executes in O(1) stack space:
+    countdown 1000000
 end
 ```
+
+---
+
+Next: [4. Meta-Programming](04_Meta-Programming.md)
+

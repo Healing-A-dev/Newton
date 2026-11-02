@@ -1,121 +1,222 @@
-# 5. The Ecosystem & Project Structure
+# 5. Ecosystem & Project Structure
 
-Newton is more than just a compiler; it is a complete toolchain. Whether you are writing a quick 10-line script or building a massive systems application, the ecosystem is designed to scale with you.
+Newton is more than a compiler; it is a full, self-contained development toolchain. Whether writing a rapid automation script or engineering a multi-module systems application, the ecosystem is built to support your workflow.
 
-## Modules and Namespacing
+---
 
-To keep the global scope clean, Newton heavily utilizes namespacing. When you import a module using the `using` keyword, you must prefix its functions with the module name.
+## Modules & Namespacing
 
-```asm
-using std::File
+To keep the global namespace clean and predictable, Newton uses module-based namespacing.
+
+```crystal
+using std::web
+using std::string
 
 fun main:
-    ; Standard library functions require their explicit namespace
-    set fd: File.open "config.txt", 0
+    set server: web.tcpServer 8080
+    @println "Server initialized."
 end
+```
+
+### Case-Insensitive Module Resolution
+
+Newton's module resolver is case-insensitive on all platforms. All of the following import variations resolve seamlessly:
+
+```crystal
+using std::math
+using std::Math
+using std::web
+using std::Web
 ```
 
 ### Strict Internal Namespacing
-Newton enforces a very strict, predictable rule for modules: **If a file is not the main entry point, you must use its explicit namespace to access its own functions and global variables, even from within the file itself.**
 
-The namespace is derived from the file name. For example, if you are writing a helper module named `Bad_Math.nt`, any function calling another function inside that same file must prefix it with `Bad_Math.`.
+Newton enforces an explicit architectural rule: **Inside a non-entry module, calls to sibling functions or global variables within that same module must use the module's namespace.**
 
-```asm
-; File: Bad_Math.nt
+The namespace matches the file name without extension. For example, inside `src/Newton/lib/std/web.nt`, functions calling peer functions in `web.nt` prefix them with `web.`:
 
-; A global variable native to this module
-set PI*: 3.14 
+```crystal
+; File: web.nt
 
-fun add: @args a, b
-    return $a +$b
+fun tcpServer: @args port
+    set fd: net_create
+    net_bind $fd, $port
+    net_listen $fd
+    return $fd
 end
 
-fun multiply: @args a, b
-    set sum: 0
-    for &s, 0, $b, 1:
-        ; Calling 'add' from inside the same file requires the namespace!
-        sum: $sum + (Bad_Math.add $a, $a)
-    end
-    return $sum
-end
-
-fun getPI:
-    ; Reading a global variable from inside the same file also requires the namespace
-    return $Bad_Math.PI
+fun httpServer: @args port
+    ; Sibling function call uses 'web.' namespace
+    return web.tcpServer $port
 end
 ```
 
-Why does Newton do this? This explicit internal namespacing ensures that when the compiler links multiple files together, there is zero ambiguity. Since newton amalgomates all files during compilation, it prevents accidental shadowing and makes it instantly clear to any developer reading the file exactly where a function or global state originates.
+This prevents accidental variable shadowing and ensures 100% clarity when multiple modules are amalgamated during native compilation.
 
-### Importing Local Files
-To import your own modules or other `.nt` files into your project, use the `using` keyword followed by the file name (without the `.nt` extension). 
+---
 
-Once imported, you must use the file's name as the namespace to access its functions and global variables.
+## Importing Local Project Files
 
-```asm
-; File: main.nt
+To import other `.nt` files from your project, use the `using` keyword followed by the path (separated by `::` or directory notation, without `.nt` extension):
 
-; Imports 'Bad_Math.nt' from the same directory
-using Bad_Math
+```crystal
+; Imports 'helper.nt' from current directory
+using helper
 
-; Import follow the following 
-; Be sure NOT to include the file extension
-using path::to::file
+; Imports 'models/user.nt'
+using models::user
 
 fun main:
-    set result: Bad_Math.add 10, 5
-    @println "The result is: {}", $result
+    set u: user.createUser "Alice"
+    helper.log "User created."
 end
 ```
 
-## The Prelude and Utility Wrappers
+---
 
-To make development faster, Newton automatically injects a prelude (`Base.nt`) into every project unless you explicitly compile with the `--noStdlib` flag.
+## Project Structure & Configuration (`.Newtonproj.toml`)
 
-The prelude automatically imports core modules (such as `IO`, `String`, and `File`). More importantly, it provides global wrapper functions so you don't have to type the full namespace for common operations.
+Newton includes built-in project scaffolding via the `newton init` command:
 
-```asm
-fun main:
-    ; Without the prelude:
-    set data: File.readEntireFile "data.txt"
-
-    ; With the prelude's global wrappers:
-    set data: readfile "data.txt"
-end
+```bash
+newton init my_app
 ```
 
-## Execution Modes: Compiled vs. Scripting
+This creates a standard project layout:
 
-Newton bridges the gap between high-performance systems languages and ergonomic scripting languages by offering two distinct execution modes.
+```
+my_app/
+├── .Newtonproj.toml   # Project configuration
+├── .gitignore
+├── bin/               # Compiled binaries
+├── lib/               # Local libraries & packages
+└── src/
+    └── main.nt        # Application entry point
+```
 
-### 1. Standard Compilation (`.nt`)
+### Project Configuration (`.Newtonproj.toml`)
 
-This is the default mode for Newton. Files ending in `.nt` require a `main` function. When you build a `.nt` file, you have access to the full compiler toolchain, including:
+```toml
+[Project]
+name = "my_app"
+version = "0.1.0"
+entrypoint = "src/main.nt"
 
-- Cross-compilation to supported platforms.
-- Linking external source files.
-- Generating static, zero-dependency native executables.
-- Using custom build flags (such as `--noStdlib`).
+[Flags]
+verbose = "false"
+link-C = "true"
+
+[Build]
+# Optional custom pre-build commands
+# gcc -c -fPIC -Isrc/include -o lib/c_helper.o src/c_helper.c
+
+[LinkerFiles]
+# Additional libraries or object files to link
+lib/c_helper.o
+```
+
+When building inside a directory containing `.Newtonproj.toml`, simply running `newton build` or `newton run` automatically applies all configured build steps and linker files.
+
+---
+
+## Compiler CLI Reference
+
+```
+Usage: newton <command> [<args>] [<flags>]
+
+Commands:
+   init <name>     Initialize a new project skeleton.
+   build <file>    Compile a Newton file or project to a native binary.
+   run <file>      Compile and immediately run the program.
+   lsp             Launch the Newton Language Server Protocol (LSP) daemon.
+   help            Display usage instructions.
+   version         Display the compiler build version.
+
+Options:
+   -o, --output <file>    Specify output binary path/name.
+   -b, --build <target>   Specify compiler backend (native, c).
+   -f, --fallback <tgt>   Specify a fallback backend on compilation error.
+   -p, --platform <os>    Specify target platform (linux, win64).
+   -v, --verbose          Enable verbose compiler and linker commands.
+   -r, --run              Compile and execute immediately.
+
+Advanced Flags:
+   -l <file.o|lib>        Specify an object file or library to link with.
+   -L <dir>               Specify a library search directory for the linker.
+   --link-C               Automatically link standard C runtime (libc, libm, dynamic linker).
+   --noStdlib             Prevent the standard library prelude from being imported.
+   --script               Treat file as an automated Newton script (.nts).
+   --keep-intermidiates   Preserve generated assembly and intermediate files.
+   -O                     Compile directly to a native object file (.o).
+   -GVM                   Stop compilation after generating GravityVM bytecode (.gvt).
+```
+
+---
+
+## Execution Modes: Compiled (`.nt`) vs Scripting (`.nts`)
+
+Newton supports two distinct execution modes:
+
+### 1. Standard Compiled Mode (`.nt`)
+- Requires a `main` function as the execution entry point.
+- Compiles down to an optimized native x86_64 binary with zero external dependencies.
+- Supports external linking, C FFI, and cross-compilation.
 
 ### 2. Scripting Mode (`.nts`)
+- Files ending in `.nts` (or executed with `--script`) execute immediately.
+- Does not require a `main` function; loose top-level statements are automatically wrapped.
+- Ideal for system administration, build automation, and rapid testing.
 
-If you just need to automate a task or write a quick utility, you can use the `.nts` extension (or run a `.nt` file with the `--script` flag).
+---
 
-In scripting mode, Newton behaves more like Python or Bash. You do not need to define a `main` function. Instead, the compiler automatically:
+## Language Server Protocol (LSP)
 
-- Hoists function declarations.
-- Wraps loose statements in a generated `main` function.
-- Executes the resulting program immediately.
+Newton includes a built-in Language Server Protocol daemon supporting real-time diagnostics, hover tooltips, autocompletion, symbol outlines, and definition jumping.
 
-> **Note:** Because scripting mode is designed for rapid execution, it does not support linking external files, generating native executables, or using build-specific compiler flags.
+Start the LSP server directly via:
 
-## The Package Manager (`nnpm`)
+```bash
+newton lsp
+# or using the dedicated binary:
+newton-lsp
+```
 
-For larger projects, Newton includes its own package and build manager: `nnpm`.
+### Editor Integration
 
-Rather than manually invoking the compiler across multiple source files, `nnpm` allows you to:
+#### Neovim (`nvim-lspconfig` or raw LSP)
 
-- Manage project dependencies.
-- Define build targets.
-- Organize applications using a configuration-first workflow.
-- Produce reproducible, portable builds across different machines.
+```lua
+vim.api.nvim_create_autocmd("FileType", {
+  pattern = "newton",
+  callback = function()
+    vim.lsp.start({
+      name = "newton-lsp",
+      cmd = { "newton", "lsp" },
+      root_dir = vim.fs.dirname(vim.fs.find({ ".Newtonproj.toml", ".git" }, { upward = true })[1]),
+    })
+  end,
+})
+```
+
+#### Helix (`languages.toml`)
+
+```toml
+[[language]]
+name = "newton"
+scope = "source.newton"
+file-types = ["nt", "nts"]
+language-servers = ["newton-lsp"]
+
+[language-server.newton-lsp]
+command = "newton"
+args = ["lsp"]
+```
+
+#### VS Code (`settings.json` or custom extension)
+
+Configure the language server client to execute `newton lsp` or `newton-lsp` over standard I/O pipes.
+
+---
+
+Next: [6. Style Guide & Conventions](06_Convention.md)
+

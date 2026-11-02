@@ -1,12 +1,86 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 100" width="200" height="200">
-  <!-- Main File Body -->
-  <path d="M 20 10 L 60 10 L 80 30 L 80 90 L 20 90 Z" fill="#34495E" stroke="#2C3E50" stroke-width="3"/>
+  <defs>
+    <linearGradient id="docBg" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#242C37"/>
+      <stop offset="100%" stop-color="#181D24"/>
+    </linearGradient>
+    <linearGradient id="foldGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#C7D2FE"/>
+      <stop offset="100%" stop-color="#9BAAF5"/>
+    </linearGradient>
+    <linearGradient id="nGradFile" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#B8C5FC"/>
+      <stop offset="100%" stop-color="#818CF8"/>
+    </linearGradient>
+    <linearGradient id="ringGradFile" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FEF08A"/>
+      <stop offset="100%" stop-color="#FCD34D"/>
+    </linearGradient>
+    <linearGradient id="moonGradFile" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#A7F3D0"/>
+      <stop offset="100%" stop-color="#6EE7B7"/>
+    </linearGradient>
+    <filter id="fileGlow" x="-20%" y="-20%" width="140%" height="140%">
+      <feDropShadow dx="0" dy="2" stdDeviation="2" flood-color="#000000" flood-opacity="0.3"/>
+    </filter>
+  </defs>
+
+  <!-- Document Page Base -->
+  <path d="M 22 10 L 58 10 L 78 30 L 78 90 L 22 90 Z" 
+        fill="url(#docBg)" 
+        stroke="#384353" 
+        stroke-width="2.5" 
+        stroke-linejoin="round"/>
 
   <!-- Folded Corner -->
-  <path d="M 60 10 L 60 30 L 80 30 Z" fill="#BDC3C7"/>
+  <path d="M 58 10 L 58 30 L 78 30 Z" 
+        fill="url(#foldGrad)" 
+        stroke="#384353" 
+        stroke-width="1.5" 
+        stroke-linejoin="round"/>
 
-  <!-- .nt Text -->
-  <text x="50" y="65" font-family="monospace" font-size="24" fill="#ECF0F1" font-weight="bold" text-anchor="middle">
-    .nt
-  </text>
+  <!-- Embedded Orbital N Emblem -->
+  <g transform="translate(50, 48) scale(0.32) translate(-100, -100)">
+    <!-- Back of Orbit Ring -->
+    <g transform="translate(100, 100) rotate(-24)">
+      <path d="M -72 0 A 72 23 0 0 1 72 0" 
+            fill="none" 
+            stroke="url(#ringGradFile)" 
+            stroke-width="7" 
+            stroke-linecap="round" 
+            opacity="0.55"/>
+    </g>
+
+    <!-- Bold Letter N -->
+    <path d="M 54 150 L 54 50 L 146 150 L 146 50" 
+          fill="none" 
+          stroke="url(#nGradFile)" 
+          stroke-width="19" 
+          stroke-linecap="round" 
+          stroke-linejoin="round"
+          filter="url(#fileGlow)"/>
+
+    <!-- Front of Orbit Ring -->
+    <g transform="translate(100, 100) rotate(-24)">
+      <path d="M 72 0 A 72 23 0 0 1 -72 0" 
+            fill="none" 
+            stroke="url(#ringGradFile)" 
+            stroke-width="8.5" 
+            stroke-linecap="round"
+            filter="url(#fileGlow)"/>
+
+      <!-- Gliding Moon -->
+      <circle cx="58" cy="13.5" r="7.5" fill="url(#moonGradFile)"/>
+      <circle cx="58" cy="13.5" r="10.5" fill="none" stroke="#A7F3D0" stroke-width="1.8" opacity="0.6"/>
+    </g>
+  </g>
+
+  <!-- Extension Label (.nt) -->
+  <text x="50" y="81" 
+        font-family="system-ui, -apple-system, sans-serif" 
+        font-size="12" 
+        font-weight="bold" 
+        fill="#FEF08A" 
+        text-anchor="middle" 
+        letter-spacing="0.5">.nt</text>
 </svg>
