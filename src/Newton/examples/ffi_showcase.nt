@@ -1,0 +1,39 @@
+; Filename: ffi_showcase.nt
+; Description: Showcase Newton C FFI features (primitives, strings, collections, callbacks)
+
+exposed fun newton_multiply:
+    @args x, y
+    @println "  [Newton Callback] Received x={} y={}, computing product...", $x, $y
+    return $x * $y
+end
+
+fun main:
+    @println "=== Newton C FFI Showcase ==="
+
+    ; Strings
+    #c_greet "Newton Developer"
+    set sum: #c_add 40, 2
+    @println "Sum from C: {}", $sum
+
+    set h: #c_hypot 3, 4
+    @println "Hypotenuse (3, 4) from C: {}", $h
+
+    ; Passing Arrays (Lists) to C
+    @println "\n--- Passing Arrays to C ---"
+    set numbers: [5, 10, 15, 20]
+    set array_sum: #c_sum_array $numbers
+    @println "Array Sum computed in C: {}", $array_sum
+
+    ; Passing Maps to C
+    @println "\n--- Passing Maps to C ---"
+    set config: (language: "Newton", release: 2026, status: "Active")
+    #c_print_map $config
+
+    ; Invoking Newton Function from C
+    @println "\n--- Calling Newton Function from C ---"
+    set product: #c_call_multiply 9, 9
+    @println "Result of Newton function called from C: {}", $product
+
+    @println "\n=== All FFI Tests Passed Successfully! ==="
+end
+

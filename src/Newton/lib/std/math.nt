@@ -7,7 +7,9 @@
 ;         MATHEMATICAL CONSTANTS        ;
 ; ------------------------------------- ;
 
-set PI*: 3.1415926353
+set PI*:  3.1415926353
+set TAU*: $math.PI * 2
+set E*:   2.7182818284
 
 ; ------------------------------------- ;
 ;         MATHEMATICAL FUNCTIONS        ;
@@ -31,7 +33,6 @@ fun min: @args a, b
     end
 end
 
-
 ; Maximum
 fun max: @args a, b
     if $a > $b:
@@ -41,13 +42,10 @@ fun max: @args a, b
     end
 end
 
-
 ; Naive exponent (will be optimized later)
 fun pow: @args base, exp
-
     set result: 1
     set i: 0
-
     while $i < $exp:
         result: $result * $base
         i: $i + 1
@@ -56,28 +54,34 @@ fun pow: @args base, exp
     return $result
 end
 
-
 ; Modulo
 fun mod: @args a, b
-    set r: $a - $b
-    while $r >= $b:
-        r: $r - $b
-    end
-    return $r
+    return $a % $b
 end
 
+; Floor
+fun floor: @args n
+	return (int $n)
+end
+
+; Ceil
+fun ceil: @args n
+	return (int $n) + 1
+end
 
 ; Round
 fun round: @args n
-	if $n >= 0.0:
-		set res: $n + 0.5
-		return (int $res)
+	if (typeof $n) == "int": return $n end
+	set [high, low]: [(math.ceil $n), (math.floor $n)]
+	set [high_diff, low_diff]: [(math.abs $high - $n), (math.abs $n - $low)]
+	if $high_diff < $low_diff:
+		return $high
+	elseif $low_diff < $high_diff:
+		return $low
 	else:
-		set res: $n - 0.5
-		return (int $res)
+		return $high
 	end
 end
-
 
 ; Square Root
 fun sqrt: @args n
@@ -98,42 +102,121 @@ fun random: @args max
     return __math_random $max
 end
 
-
 ; Sine
 fun sin: @args x
-    ; Calculate powers
     set x2: $x * $x
     set x3: $x2 * $x
     set x5: $x3 * $x2
     set x7: $x5 * $x2
 
-    ; Calculate terms using hardcoded factorials (3! = 6, 5! = 120, etc)
     set term1: $x
     set term2: $x3 / 6.0
     set term3: $x5 / 120.0
     set term4: $x7 / 5040.0
-
     return $term1 - $term2 + $term3 - $term4
 end
 
 ; Cosine
 fun cos: @args x
-    ; Calculate powers
     set x2: $x * $x
     set x4: $x2 * $x2
     set x6: $x4 * $x2
 
-    ; Calculate terms (2! = 2, 4! = 24, 6! = 720)
     set term1: 1.0
     set term2: $x2 / 2.0
     set term3: $x4 / 24.0
     set term4: $x6 / 720.0
-
     return $term1 - $term2 + $term3 - $term4
 end
 
+; clamp
+fun clamp: @args val, low, high
+	if $val < $low:
+		return $low
+	elseif $val > $high:
+		return $high
+	end
+	return $val
+end
 
-;; Bitwise Operations
+; Bitwise Operations
 fun xor: @args base, x
 	return __math_xor $base, $x
+end
+
+; Sign of number (-1, 0, or 1)
+fun sign: @args n
+	if $n < 0:
+		return -1
+	elseif $n > 0:
+		return 1
+	end
+	return 0
+end
+
+; Checks if number is even
+fun isEven: @args n
+	if ($n % 2) == 0:
+		return 1
+	end
+	return 0
+end
+
+; Checks if number is odd
+fun isOdd: @args n
+	if ($n % 2) != 0:
+		return 1
+	end
+	return 0
+end
+
+; Greatest Common Divisor
+fun gcd: @args a, b
+	set x: math.abs $a
+	set y: math.abs $b
+	while $y != 0:
+		set temp: $y
+		y: $x % $y
+		x: $temp
+	end
+	return $x
+end
+
+; Least Common Multiple
+fun lcm: @args a, b
+	if $a == 0 or $b == 0:
+		return 0
+	end
+	set prod: (math.abs $a) * (math.abs $b)
+	set g: math.gcd $a, $b
+	return $prod / $g
+end
+
+; Linear Interpolation
+fun lerp: @args a, b, t
+	return $a + ($b - $a) * $t
+end
+
+; Degrees to Radians
+fun degToRad: @args deg
+	return $deg * ($math.PI / 180.0)
+end
+
+; Radians to Degrees
+fun radToDeg: @args rad
+	return $rad * (180.0 / $math.PI)
+end
+
+; Factorial
+fun factorial: @args n
+	if $n <= 1:
+		return 1
+	end
+	set result: 1
+	set i: 2
+	while $i <= $n:
+		result: $result * $i
+		i: $i + 1
+	end
+	return $result
 end

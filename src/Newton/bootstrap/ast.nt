@@ -1,14 +1,14 @@
 using enum
 
 fun astNode: @args object
-  set astNode: ("line": 0, "autoUnwrap": 0, "fromImport": 0)
+  set astNode: ("line": 0, "autoUnwrap": 0, "fromImport": 0, "kind": $object)
   if $object == $enum.nkProgram:
     astNode{"stmts"}: []
   elseif $object == $enum.nkBlock:
     astNode{"blockStmts"}: []
   elseif ($object == $enum.nkVarDecl) or ($object == $enum.nkGlobalDecl) or ($object == $enum.nkAssignment):
     astNode{"varName"}: ""
-    astNode{"varValue"}: $astNode
+    astNode{"varValue"}: ""
   elseif $object == $enum.nkVarRef:
     astNode{"refName"}: ""
   elseif ($object == $enum.nkLiteral) or ($object == $enum.nkFloatLit):
@@ -16,30 +16,30 @@ fun astNode: @args object
     astNode{"isString"}: 0
   elseif ($object == $enum.nkBinaryOp) or ($object == $enum.nkInfix):
     astNode{"op"}: ""
-    astNode{"left"}: $astNode
-    astNode{"right"}: $astNode
+    astNode{"left"}: ""
+    astNode{"right"}: ""
   elseif ($object == $enum.nkCommand) or ($object == $enum.nkCall) or ($object == $enum.nkCallDynamic):
     astNode{"callName"}: ""
-    astNode{"callTarget"}: $astNode
+    astNode{"callTarget"}: ""
     astNode{"callArgs"}: []
   elseif $object == $enum.nkFunction:
     astNode{"fnName"}: ""
     astNode{"fnArgs"}: []
-    astNode{"fnBody"}: $astNode
+    astNode{"fnBody"}: ""
     astNode{"fnExpo"}: 0
   elseif $object == $enum.nkReturn:
-    astNode{"returnVal"}: $astNode
+    astNode{"returnVal"}: ""
   elseif $object == $enum.nkIf:
-    astNode{"condition"}: $astNode
-    astNode{"thenBranch"}: $astNode
-    astNode{"elseBranch"}: $astNode
+    astNode{"condition"}: ""
+    astNode{"thenBranch"}: ""
+    astNode{"elseBranch"}: ""
   elseif $object == $enum.nkLoop:
     astNode{"loopType"}: ""
     astNode{"loopArgs"}: []
-    astNode{"loopBody"}: $astNode
+    astNode{"loopBody"}: ""
   elseif $object == $enum.nkWhile:
-    astNode{"whileCondition"}: $astNode
-    astNode{"whileBody"}: $astNode
+    astNode{"whileCondition"}: ""
+    astNode{"whileBody"}: ""
   elseif $object == $enum.nkInput:
     set __discard__: 1
   elseif $object == $enum.nkMapLit:
@@ -47,31 +47,31 @@ fun astNode: @args object
     astNode{"mapValues"}: []
     astNode{"isList"}: 0
   elseif $object == $enum.nkMapGet:
-    astNode{"targetMap"}: $astNode
-    astNode{"targetKey"}: $astNode
+    astNode{"targetMap"}: ""
+    astNode{"targetKey"}: ""
   elseif $object == $enum.nkDel:
-    astNode{"delMap"}: $astNode
-    astNode{"delKey"}: $astNode
+    astNode{"delMap"}: ""
+    astNode{"delKey"}: ""
   elseif $object == $enum.nkBracket:
     astNode{"children"}: []
   elseif $object == $enum.nkMatch:
-    astNode{"matchTarget"}: $astNode
+    astNode{"matchTarget"}: ""
     astNode{"matchBranches"}: []
   elseif $object == $enum.nkMatchBranch:
-    astNode{"branchCond"}: $astNode
-    astNode{"branchBody"}: $astNode
+    astNode{"branchCond"}: ""
+    astNode{"branchBody"}: ""
   elseif $object == $enum.nkDestructionDecl:
     astNode{"destructNames"}: []
-    astNode{"destructVal"}: $astNode
+    astNode{"destructVal"}: ""
   elseif $object == $enum.nkForeachFile:
     astNode{"fileLoopVar"}: ""
-    astNode{"fileLoopTarget"}: $astNode
-    astNode{"fileLoopBody"}: $astNode
+    astNode{"fileLoopTarget"}: ""
+    astNode{"fileLoopBody"}: ""
   elseif $object == $enum.nkForeachMap:
     astNode{"mapLoopKey"}: ""
     astNode{"mapLoopVal"}: ""
-    astNode{"mapLoopTarget"}: $astNode
-    astNode{"mapLoopBody"}: $astNode
+    astNode{"mapLoopTarget"}: ""
+    astNode{"mapLoopBody"}: ""
   end
   return [@ok, $astNode]
 end

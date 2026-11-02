@@ -1,8 +1,14 @@
 ; Filename: web.nt
-; Description: Web and Newtworking module for the newton standard librar
+; Description: Web and Networking module for the Newton standard library
 ; Date: April 30th, 2026 *
 
+using std::string
+
 set SOCKET*: 0
+
+; ==============================================================================
+; Low-Level Socket Syscalls (Backwards Compatible)
+; ==============================================================================
 
 fun new:
     set fd: net_create
@@ -39,13 +45,655 @@ fun recieve:
     return net_recv $client, $size
 end
 
+; Alias for receive
+fun receive:
+    @args client, size
+    return net_recv $client, $size
+end
 
 fun connect:
-    @args fd, port,ip_int
+    @args fd, port, ip_int
     return net_connect $fd, $port, $ip_int
 end
 
 fun sendFile:
-	@args client_fd, file_fd, size
-	return __net_sendfile $client_fd, $file_fd, $size
+    @args client_fd, file_fd, size
+    return __net_sendfile $client_fd, $file_fd, $size
+end
+
+
+; ==============================================================================
+; String & Utility Helpers
+; ==============================================================================
+
+fun trim: @args s
+    set len: sizeof $s
+    if $len == 0: return "" end
+    set [lp, rp]: [0, $len - 1]
+    while $lp <= $rp:
+        set c: $s{$lp}
+        if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+            lp: $lp + 1
+        else:
+            break
+        end
+    end
+    while $rp >= $lp:
+        set c: $s{$rp}
+        if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+            rp: $rp - 1
+        else:
+            break
+        end
+    end
+    if $lp > $rp: return "" end
+    return substring $s, $lp, ($rp - $lp) + 1
+end
+
+fun lower: @args s
+    set out: ""
+    set len: sizeof $s
+    set i: 0
+    while $i < $len:
+        set c: $s{$i}
+        if $c >= 65 and $c <= 90:
+            set ch: string.char ($c + 32)
+            out: $out << $ch
+        else:
+            out: $out << (substring $s, $i, 1)
+        end
+        i: $i + 1
+    end
+    return $out
+end
+
+; Converts dotted-quad IPv4 string (or "localhost") into 32-bit network-byte-order integer
+fun ipToInt: @args ip
+    if (typeof $ip) == "int":
+        return $ip
+    end
+    if $ip == "localhost":
+        set ip: "127.0.0.1"
+    end
+
+    set len: sizeof $ip
+    set i: 0
+    set current: ""
+    set octets: []
+
+    while $i < $len:
+        set ch: $ip{$i}
+        if $ch == 46:
+            octets{(sizeof $octets)}: int $current
+            current: ""
+        else:
+            set char_str: substring $ip, $i, 1
+            current: $current << $char_str
+        end
+        i: $i + 1
+    end
+    octets{(sizeof $octets)}: int $current
+
+    if (sizeof $octets) != 4:
+        return 0
+    end
+
+    set o1: $octets{0}
+    set o2: $octets{1}
+    set o3: $octets{2}
+    set o4: $octets{3}
+
+    set res: $o1 + ($o2 * 256)
+    res: $res + ($o3 * 65536)
+    res: $res + ($o4 * 16777216)
+    return $res
+end
+
+; Converts 32-bit network-byte-order integer to dotted-quad IP string
+fun intToIp: @args ip_int
+    set o1: $ip_int % 256
+    set o2: ($ip_int / 256) % 256
+    set o3: ($ip_int / 65536) % 256
+    set o4: ($ip_int / 16777216) % 256
+    return (string $o1) << "." << (string $o2) << "." << (string $o3) << "." << (string $o4)
+end
+
+
+; ==============================================================================
+; High-Level TCP API
+; ==============================================================================
+
+; Create, bind, and listen on a port. Returns server socket fd.
+fun tcpServer: @args port
+    set server_fd: net_create
+    if $server_fd < 0:
+        return $server_fd
+    end
+    set bind_res: net_bind $server_fd, $port
+    if $bind_res < 0:
+        net_close $server_fd
+        return $bind_res
+    end
+    set listen_res: net_listen $server_fd
+    if $listen_res < 0:
+        net_close $server_fd
+        return $listen_res
+    end
+    return $server_fd
+end
+
+; Connect to a remote TCP server (host can be string like "127.0.0.1" or integer).
+fun tcpConnect: @args host, port
+    set sock: net_create
+    if $sock < 0:
+        return $sock
+    end
+    set ip_num: web.ipToInt $host
+    set conn_res: net_connect $sock, $port, $ip_num
+    if $conn_res < 0:
+        net_close $sock
+        return $conn_res
+    end
+    return $sock
+end
+
+fun tcpAccept: @args server_fd
+    return net_accept $server_fd
+end
+
+fun tcpSend: @args fd, data
+    return net_send $fd, $data
+end
+
+fun tcpRecv: @args fd, size
+    return net_recv $fd, $size
+end
+
+fun tcpClose: @args fd
+    net_close $fd
+end
+
+
+; ==============================================================================
+; HTTP Protocol Parser & Builders
+; ==============================================================================
+
+; Parses a URL string ("http://127.0.0.1:8080/path" or "127.0.0.1:8080/path")
+; Returns (host: "127.0.0.1", port: 8080, path: "/path")
+fun parseUrl: @args url
+    set clean_url: $url
+    if (substring $clean_url, 0, 7) == "http://":
+        clean_url: substring $clean_url, 7, (sizeof $clean_url) - 7
+    end
+
+    set len: sizeof $clean_url
+    set slash_idx: $len
+    set i: 0
+    while $i < $len:
+        if $clean_url{$i} == 47:
+            slash_idx: $i
+            break
+        end
+        i: $i + 1
+    end
+
+    set host_part: substring $clean_url, 0, $slash_idx
+    set path: "/"
+    if $slash_idx < $len:
+        path: substring $clean_url, $slash_idx, $len - $slash_idx
+    end
+
+    ; Parse host_part for optional port
+    set hp_len: sizeof $host_part
+    set colon_idx: $hp_len
+    set j: 0
+    while $j < $hp_len:
+        if $host_part{$j} == 58:
+            colon_idx: $j
+            break
+        end
+        j: $j + 1
+    end
+
+    set host: $host_part
+    set port: 80
+    if $colon_idx < $hp_len:
+        host: substring $host_part, 0, $colon_idx
+        set port_str: substring $host_part, $colon_idx + 1, $hp_len - ($colon_idx + 1)
+        port: int $port_str
+    end
+
+    return (host: $host, port: $port, path: $path)
+end
+
+; Parses raw HTTP request into a structured Newton map
+fun parseRequest: @args raw
+    set len: sizeof $raw
+    if $len == 0:
+        return (method: "", path: "", query: "", version: "", headers: (), body: "")
+    end
+
+    ; 1. Find line 1 end
+    set i: 0
+    while $i < $len:
+        set c: $raw{$i}
+        if $c == 10 or $c == 13:
+            break
+        end
+        i: $i + 1
+    end
+    set line1: substring $raw, 0, $i
+
+    ; Parse line 1: METHOD PATH VERSION
+    set l1_len: sizeof $line1
+    set sp1: 0
+    while $sp1 < $l1_len:
+        if $line1{$sp1} == 32: break end
+        sp1: $sp1 + 1
+    end
+    set method: substring $line1, 0, $sp1
+
+    set sp2: $sp1 + 1
+    while $sp2 < $l1_len:
+        if $line1{$sp2} == 32: break end
+        sp2: $sp2 + 1
+    end
+    set full_path: substring $line1, $sp1 + 1, $sp2 - ($sp1 + 1)
+    set version: substring $line1, $sp2 + 1, $l1_len - ($sp2 + 1)
+
+    ; Split full_path into path and query
+    set q_idx: 0
+    set fp_len: sizeof $full_path
+    set has_q: 0
+    while $q_idx < $fp_len:
+        if $full_path{$q_idx} == 63:
+            has_q: 1
+            break
+        end
+        q_idx: $q_idx + 1
+    end
+
+    set path: $full_path
+    set query: ""
+    if $has_q == 1:
+        path: substring $full_path, 0, $q_idx
+        query: substring $full_path, $q_idx + 1, $fp_len - ($q_idx + 1)
+    end
+
+    ; 2. Find headers and body boundary
+    set body_start: $len
+    set hdr_end: $len
+    set j: 0
+    while $j < ($len - 3):
+        if $raw{$j} == 13 and $raw{$j+1} == 10 and $raw{$j+2} == 13 and $raw{$j+3} == 10:
+            hdr_end: $j
+            body_start: $j + 4
+            break
+        end
+        if $raw{$j} == 10 and $raw{$j+1} == 10:
+            hdr_end: $j
+            body_start: $j + 2
+            break
+        end
+        j: $j + 1
+    end
+
+    set body: ""
+    if $body_start < $len:
+        body: substring $raw, $body_start, $len - $body_start
+    end
+
+    ; 3. Parse headers
+    set headers: ()
+    set h_pos: $i
+    while $h_pos < $hdr_end:
+        set c: $raw{$h_pos}
+        if $c == 10 or $c == 13:
+            h_pos: $h_pos + 1
+        else:
+            break
+        end
+    end
+
+    while $h_pos < $hdr_end:
+        set line_end: $h_pos
+        while $line_end < $hdr_end:
+            set c: $raw{$line_end}
+            if $c == 10 or $c == 13: break end
+            line_end: $line_end + 1
+        end
+
+        set h_line: substring $raw, $h_pos, $line_end - $h_pos
+        set colon: 0
+        set hl_len: sizeof $h_line
+        while $colon < $hl_len:
+            if $h_line{$colon} == 58: break end
+            colon: $colon + 1
+        end
+
+        if $colon < $hl_len:
+            set k: web.lower (web.trim (substring $h_line, 0, $colon))
+            set v: web.trim (substring $h_line, $colon + 1, $hl_len - ($colon + 1))
+            headers{$k}: $v
+        end
+
+        h_pos: $line_end
+        while $h_pos < $hdr_end:
+            set c: $raw{$h_pos}
+            if $c == 10 or $c == 13: h_pos: $h_pos + 1 else: break end
+        end
+    end
+
+    return (method: $method, path: $path, query: $query, version: $version, headers: $headers, body: $body)
+end
+
+; Parses query string "key1=val1&key2=val2" into a Newton map
+fun parseQueryParams: @args query_str
+    set res: ()
+    set len: sizeof $query_str
+    if $len == 0: return $res end
+
+    set start: 0
+    set i: 0
+    while $i <= $len:
+        set at_end: 0
+        if $i == $len:
+            at_end: 1
+        else:
+            if $query_str{$i} == 38:
+                at_end: 1
+            end
+        end
+
+        if $at_end == 1:
+            set pair: substring $query_str, $start, $i - $start
+            set eq_idx: 0
+            set p_len: sizeof $pair
+            while $eq_idx < $p_len:
+                if $pair{$eq_idx} == 61: break end
+                eq_idx: $eq_idx + 1
+            end
+            if $eq_idx < $p_len:
+                set k: substring $pair, 0, $eq_idx
+                set v: substring $pair, $eq_idx + 1, $p_len - ($eq_idx + 1)
+                res{$k}: $v
+            else:
+                if $p_len > 0:
+                    res{$pair}: ""
+                end
+            end
+            start: $i + 1
+        end
+        i: $i + 1
+    end
+    return $res
+end
+
+; Standard HTTP reason phrases
+fun statusText: @args code
+    if $code == 200: return "OK" end
+    if $code == 201: return "Created" end
+    if $code == 204: return "No Content" end
+    if $code == 301: return "Moved Permanently" end
+    if $code == 302: return "Found" end
+    if $code == 400: return "Bad Request" end
+    if $code == 401: return "Unauthorized" end
+    if $code == 403: return "Forbidden" end
+    if $code == 404: return "Not Found" end
+    if $code == 405: return "Method Not Allowed" end
+    if $code == 500: return "Internal Server Error" end
+    return ""
+end
+
+; Builds complete HTTP/1.1 response string with Content-Length and Content-Type
+fun response: @args code, body, content_type
+    set text: web.statusText $code
+    set status_line: "HTTP/1.1 " << (string $code) << " " << $text << "\r\n"
+    set h: $status_line << "Content-Type: " << $content_type << "\r\n"
+    h: $h << "Content-Length: " << (string sizeof $body) << "\r\n"
+    h: $h << "Connection: close\r\n\r\n"
+    return $h << $body
+end
+
+; Convenience response shortcuts
+fun html: @args body
+    return web.response 200, $body, "text/html; charset=utf-8"
+end
+
+fun htmlResponse: @args body, status
+    return web.response $status, $body, "text/html; charset=utf-8"
+end
+
+fun json: @args body
+    return web.response 200, $body, "application/json"
+end
+
+fun jsonResponse: @args body, status
+    return web.response $status, $body, "application/json"
+end
+
+fun text: @args body
+    return web.response 200, $body, "text/plain; charset=utf-8"
+end
+
+fun notFound: @args body
+    if (sizeof $body) == 0:
+        return web.response 404, "<h1>404 Not Found</h1>", "text/html; charset=utf-8"
+    end
+    return web.response 404, $body, "text/html; charset=utf-8"
+end
+
+fun serverError: @args body
+    if (sizeof $body) == 0:
+        return web.response 500, "<h1>500 Internal Server Error</h1>", "text/html; charset=utf-8"
+    end
+    return web.response 500, $body, "text/html; charset=utf-8"
+end
+
+fun redirect: @args url
+    set h: "HTTP/1.1 302 Found\r\nLocation: " << $url << "\r\nContent-Length: 0\r\nConnection: close\r\n\r\n"
+    return $h
+end
+
+
+; ==============================================================================
+; High-Level HTTP Server API
+; ==============================================================================
+
+fun httpServer: @args port
+    return web.tcpServer $port
+end
+
+; Reads and parses the client HTTP request
+fun serveRequest: @args client_fd
+    set raw: net_recv $client_fd, 4096
+    if (sizeof $raw) == 0:
+        return (method: "", path: "", query: "", version: "", headers: (), body: "")
+    end
+    return web.parseRequest $raw
+end
+
+; Formats response, sends to client, and closes client socket
+fun respond: @args client_fd, code, body, content_type
+    set resp: web.response $code, $body, $content_type
+    net_send $client_fd, $resp
+    net_close $client_fd
+end
+
+fun respondHtml: @args client_fd, body
+    web.respond $client_fd, 200, $body, "text/html; charset=utf-8"
+end
+
+fun respondJson: @args client_fd, json_str
+    web.respond $client_fd, 200, $json_str, "application/json"
+end
+
+fun respondNotFound: @args client_fd
+    web.respond $client_fd, 404, "<h1>404 Not Found</h1>", "text/html; charset=utf-8"
+end
+
+
+; ==============================================================================
+; High-Level HTTP Client API
+; ==============================================================================
+
+; Parses raw HTTP response into a structured map
+fun parseResponse: @args raw
+    set len: sizeof $raw
+    if $len == 0:
+        return (status: 0, status_text: "", headers: (), body: "")
+    end
+
+    ; Line 1: HTTP/1.1 200 OK
+    set i: 0
+    while $i < $len:
+        set c: $raw{$i}
+        if $c == 10 or $c == 13: break end
+        i: $i + 1
+    end
+    set line1: substring $raw, 0, $i
+
+    set sp1: 0
+    set l1_len: sizeof $line1
+    while $sp1 < $l1_len:
+        if $line1{$sp1} == 32: break end
+        sp1: $sp1 + 1
+    end
+
+    set sp2: $sp1 + 1
+    while $sp2 < $l1_len:
+        if $line1{$sp2} == 32: break end
+        sp2: $sp2 + 1
+    end
+
+    set status_code: 0
+    set status_text: ""
+    if $sp1 < $l1_len:
+        set code_str: substring $line1, $sp1 + 1, $sp2 - ($sp1 + 1)
+        status_code: int $code_str
+        if $sp2 < $l1_len:
+            status_text: substring $line1, $sp2 + 1, $l1_len - ($sp2 + 1)
+        end
+    end
+
+    ; Headers and body boundary
+    set body_start: $len
+    set hdr_end: $len
+    set j: 0
+    while $j < ($len - 3):
+        if $raw{$j} == 13 and $raw{$j+1} == 10 and $raw{$j+2} == 13 and $raw{$j+3} == 10:
+            hdr_end: $j
+            body_start: $j + 4
+            break
+        end
+        if $raw{$j} == 10 and $raw{$j+1} == 10:
+            hdr_end: $j
+            body_start: $j + 2
+            break
+        end
+        j: $j + 1
+    end
+
+    set body: ""
+    if $body_start < $len:
+        body: substring $raw, $body_start, $len - $body_start
+    end
+
+    ; Parse headers
+    set headers: ()
+    set h_pos: $i
+    while $h_pos < $hdr_end:
+        set c: $raw{$h_pos}
+        if $c == 10 or $c == 13: h_pos: $h_pos + 1 else: break end
+    end
+
+    while $h_pos < $hdr_end:
+        set line_end: $h_pos
+        while $line_end < $hdr_end:
+            set c: $raw{$line_end}
+            if $c == 10 or $c == 13: break end
+            line_end: $line_end + 1
+        end
+
+        set h_line: substring $raw, $h_pos, $line_end - $h_pos
+        set colon: 0
+        set hl_len: sizeof $h_line
+        while $colon < $hl_len:
+            if $h_line{$colon} == 58: break end
+            colon: $colon + 1
+        end
+
+        if $colon < $hl_len:
+            set k: web.lower (web.trim (substring $h_line, 0, $colon))
+            set v: web.trim (substring $h_line, $colon + 1, $hl_len - ($colon + 1))
+            headers{$k}: $v
+        end
+
+        h_pos: $line_end
+        while $h_pos < $hdr_end:
+            set c: $raw{$h_pos}
+            if $c == 10 or $c == 13: h_pos: $h_pos + 1 else: break end
+        end
+    end
+
+    return (status: $status_code, status_text: $status_text, headers: $headers, body: $body)
+end
+
+; Performs an HTTP GET request
+fun httpGet: @args url
+    set parsed: web.parseUrl $url
+    set sock: web.tcpConnect $parsed{"host"}, $parsed{"port"}
+    if $sock < 0:
+        return (status: 0, status_text: "Connection Failed", headers: (), body: "")
+    end
+
+    set req: "GET " << $parsed{"path"} << " HTTP/1.1\r\n"
+    req: $req << "Host: " << $parsed{"host"} << "\r\n"
+    req: $req << "User-Agent: Newton/1.0\r\n"
+    req: $req << "Connection: close\r\n\r\n"
+
+    net_send $sock, $req
+
+    set full_res: ""
+    while 1 == 1:
+        set chunk: net_recv $sock, 4096
+        if (sizeof $chunk) == 0:
+            break
+        end
+        full_res: $full_res << $chunk
+    end
+    net_close $sock
+
+    return web.parseResponse $full_res
+end
+
+; Performs an HTTP POST request
+fun httpPost: @args url, body, content_type
+    set parsed: web.parseUrl $url
+    set sock: web.tcpConnect $parsed{"host"}, $parsed{"port"}
+    if $sock < 0:
+        return (status: 0, status_text: "Connection Failed", headers: (), body: "")
+    end
+
+    set req: "POST " << $parsed{"path"} << " HTTP/1.1\r\n"
+    req: $req << "Host: " << $parsed{"host"} << "\r\n"
+    req: $req << "Content-Type: " << $content_type << "\r\n"
+    req: $req << "Content-Length: " << (string sizeof $body) << "\r\n"
+    req: $req << "User-Agent: Newton/1.0\r\n"
+    req: $req << "Connection: close\r\n\r\n"
+    req: $req << $body
+
+    net_send $sock, $req
+
+    set full_res: ""
+    while 1 == 1:
+        set chunk: net_recv $sock, 4096
+        if (sizeof $chunk) == 0:
+            break
+        end
+        full_res: $full_res << $chunk
+    end
+    net_close $sock
+
+    return web.parseResponse $full_res
 end

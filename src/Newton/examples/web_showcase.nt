@@ -1,0 +1,70 @@
+; Filename: web_showcase.nt
+; Description: Showcase high-level HTTP and TCP capabilities in Newton std::web
+
+using std::web
+using std::process
+
+fun run_server:
+    set server: web.httpServer 8080
+    @println "=== Newton HTTP Server Running on http://127.0.0.1:8080 ==="
+    @println "Press Ctrl+C to stop or send requests using web.httpGet"
+
+    set count: 0
+    while $count < 3:
+        set client: web.accept $server
+        set req: web.serveRequest $client
+        if $req{"method"} != "":
+            @println "[HTTP Server] Received {} {}", $req{"method"}, $req{"path"}
+
+            if $req{"path"} == "/":
+                web.respondHtml $client, "<h1>Welcome to Newton Web!</h1><p>High-level networking in Newton standard library.</p>"
+            elif $req{"path"} == "/api/status":
+                web.respondJson $client, "{\"status\": \"healthy\", \"server\": \"Newton/1.0\"}"
+            elif $req{"path"} == "/api/echo":
+                web.respondJson $client, "{\"echo\": \"" << $req{"body"} << "\"}"
+            else:
+                web.respondNotFound $client
+            end
+            count: $count + 1
+        else:
+            web.close $client
+        end
+    end
+    web.close $server
+    @println "[HTTP Server] Completed demo requests, server closed."
+end
+
+fun main:
+    @println "Starting Newton Web Showcase..."
+
+    ; Fork child to run the server in the background
+    set pid: process.fork 0
+    if $pid == 0:
+        run_server
+        process.exit 0
+    else:
+        ; Wait 1 second for the server to bind and listen
+        process.sleep 1
+
+        @println "\n--- 1. Testing HTTP GET (HTML) ---"
+        set res1: web.httpGet "http://127.0.0.1:8080/"
+        @println "Status: {} {}", $res1{"status"}, $res1{"status_text"}
+        @println "Content-Type: {}", $res1{"headers"}{"content-type"}
+        @println "Body:\n{}", $res1{"body"}
+
+        @println "\n--- 2. Testing HTTP GET (JSON API) ---"
+        set res2: web.httpGet "http://127.0.0.1:8080/api/status"
+        @println "Status: {} {}", $res2{"status"}, $res2{"status_text"}
+        @println "Body: {}", $res2{"body"}
+
+        @println "\n--- 3. Testing HTTP POST (Data Echo) ---"
+        set res3: web.httpPost "http://127.0.0.1:8080/api/echo", "Newton is fast and expressive!", "text/plain"
+        @println "Status: {} {}", $res3{"status"}, $res3{"status_text"}
+        @println "Body: {}", $res3{"body"}
+
+        ; Wait for child process
+        process.wait 0
+        @println "\n=== Newton Web Showcase Completed Successfully! ==="
+    end
+end
+

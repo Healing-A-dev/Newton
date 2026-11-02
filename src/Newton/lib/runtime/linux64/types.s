@@ -51,6 +51,7 @@ string_len:
 string_substring:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13; push %r14; push %r15
+    sub $8, %rsp
 
     sar $1, %rsi
     sar $1, %rdx
@@ -99,6 +100,7 @@ string_substring:
 .Lsub_term:
     movb $0, (%rdi)
     mov %r15, %rax
+    add $8, %rsp
     pop %r15; pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
@@ -109,6 +111,7 @@ string_substring:
     movq $1, 0(%rax)
     add $8, %rax
     movb $0, (%rax)
+    add $8, %rsp
     pop %r15; pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
@@ -116,6 +119,7 @@ string_substring:
 string_concat:
     push %rbp; mov %rsp, %rbp
     push %rbx; push %r12; push %r13; push %r14; push %r15
+    sub $8, %rsp
     mov %rdi, %rbx
     mov %rsi, %r12
     mov %rbx, %rdi
@@ -176,6 +180,7 @@ string_concat:
     add %r14, %rdi
     movb $0, (%rdi)
     mov %r15, %rax
+    add $8, %rsp
     pop %r15; pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
@@ -300,7 +305,10 @@ collection_get_key:
 .global new_array
 new_array:
     push %rbp; mov %rsp, %rbp
-    mov $2048, %rdi
+    cmp $262144, %rdi
+    jge .Larr_size_ok
+    mov $262144, %rdi
+.Larr_size_ok:
     call _malloc
 
     movq $3, 0(%rax)
@@ -605,6 +613,7 @@ _keys_equal:
 .global runtime_get_arg
 runtime_get_arg:
     push %rbp; mov %rsp, %rbp; push %rbx; push %r12; push %r13
+    sub $8, %rsp
     sar $1, %rdi; inc %rdi; cmp __argc(%rip), %rdi; jge .Largv_null
     mov __sys_argv(%rip), %rax; mov (%rax, %rdi, 8), %rbx; xor %rcx, %rcx
 
@@ -612,9 +621,10 @@ runtime_get_arg:
 .Largv_alloc: mov %rcx, %r12; mov %rcx, %rdi; add $9, %rdi; call _malloc
     movq $1, 0(%rax); add $8, %rax; mov %rax, %rdi; mov %rbx, %rsi; mov %r12, %rcx; rep movsb
     movb $0, (%rdi); sub %r12, %rdi; mov %rdi, %rax
+    add $8, %rsp
     pop %r13; pop %r12; pop %rbx; leave; ret
 
-.Largv_null: mov $1, %rax; pop %r13; pop %r12; pop %rbx; leave; ret
+.Largv_null: mov $1, %rax; add $8, %rsp; pop %r13; pop %r12; pop %rbx; leave; ret
 
 .global newton_box_float
 newton_box_float:

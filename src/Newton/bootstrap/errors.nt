@@ -1,4 +1,4 @@
-using std::Math
+using std::math
 
 set newtonDiagnostic*: (
 	line: 0,

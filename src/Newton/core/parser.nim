@@ -1,6 +1,11 @@
 import lexer, ast, strutils, os, errors, tables
 
 var globalImportedModules = initTable[string, bool]()
+var globalModuleAliases* = initTable[string, string]()
+
+proc resetParserState*() =
+  globalImportedModules.clear()
+  globalModuleAliases.clear()
 
 type
   Parser* = ref object
@@ -46,28 +51,71 @@ proc consume(p: Parser, k: TokenType, err: string): Token =
   if p.peek().kind == k: return p.advance()
   ERR(err, p.peek().line)
 
+proc checkPathMatch(baseDir, relPath: string): string =
+  if baseDir.len > 0 and not dirExists(baseDir): return ""
+  let fullPath = if baseDir.len > 0: baseDir / relPath else: relPath
+  if fileExists(fullPath): return fullPath
+
+  # Try case-insensitive matching component by component
+  var currentDir = if baseDir.len > 0: baseDir else: "."
+  let parts = relPath.split(DirSep)
+  for i, part in parts:
+    let isLast = (i == parts.len - 1)
+    let lowerPart = part
+    var found = false
+    if dirExists(currentDir):
+      for kind, path in walkDir(currentDir):
+        let name = extractFilename(path)
+        if name == lowerPart:
+          if isLast and kind in {pcFile, pcLinkToFile}:
+            return path
+          elif not isLast and kind in {pcDir, pcLinkToDir}:
+            currentDir = path
+            found = true
+            break
+    if not found and not isLast:
+      return ""
+  return ""
+
 proc resolveModulePath(pathParts: seq[string]): string =
   let relativePath = pathParts.join($DirSep) & ".nt"
-  let libPath = "lib" & $DirSep & relativePath
 
-  if fileExists(relativePath): return relativePath
-  if fileExists(libPath): return libPath
+  if errors.currentCompilingFile.len > 0:
+    let fileDir = parentDir(errors.currentCompilingFile)
+    var candidate = checkPathMatch(fileDir, relativePath)
+    if candidate != "": return candidate
+
+  var candidate = checkPathMatch("", relativePath)
+  if candidate != "": return candidate
+
+  candidate = checkPathMatch("lib", relativePath)
+  if candidate != "": return candidate
+
+  candidate = checkPathMatch("src/Newton/lib", relativePath)
+  if candidate != "": return candidate
 
   let envPath = getEnv("NEWTON_PATH")
-  if envPath != "" and fileExists(envPath / relativePath):
-    return envPath / relativePath
+  if envPath != "":
+    candidate = checkPathMatch(envPath, relativePath)
+    if candidate != "": return candidate
 
   let exeDir = getAppDir()
-  if fileExists(exeDir / relativePath): return exeDir / relativePath
-  if fileExists(exeDir / "lib" / relativePath): return exeDir / "lib" / relativePath
+  candidate = checkPathMatch(exeDir, relativePath)
+  if candidate != "": return candidate
+  candidate = checkPathMatch(exeDir / "lib", relativePath)
+  if candidate != "": return candidate
 
   let userLocalPath = getHomeDir() / ".newton"
-  if fileExists(userLocalPath / relativePath): return userLocalPath / relativePath
-  if fileExists(userLocalPath / "lib" / relativePath): return userLocalPath / "lib" / relativePath
+  candidate = checkPathMatch(userLocalPath, relativePath)
+  if candidate != "": return candidate
+  candidate = checkPathMatch(userLocalPath / "lib", relativePath)
+  if candidate != "": return candidate
 
   let globalPath = "/usr/local/lib/newton"
-  if fileExists(globalPath / relativePath): return globalPath / relativePath
-  if fileExists(globalPath / "lib" / relativePath): return globalPath / "lib" / relativePath
+  candidate = checkPathMatch(globalPath, relativePath)
+  if candidate != "": return candidate
+  candidate = checkPathMatch(globalPath / "lib", relativePath)
+  if candidate != "": return candidate
 
   return ""
 
@@ -123,7 +171,8 @@ proc parsePrimary(p: Parser): AstNode =
     var name = p.consume(tokIdentifier, "Expected variable name after '$'").lexeme
     if p.match(tokDot):
         let prop = p.consume(tokIdentifier, "Expected property").lexeme
-        name = name & "_" & prop
+        let resolvedMod = if globalModuleAliases.hasKey(name): globalModuleAliases[name] else: name
+        name = resolvedMod & "_" & prop
     var baseNode = AstNode(kind: nkVarRef, refName: name, line: p.peek().line)
 
     while p.match(tokLBrace):
@@ -265,11 +314,12 @@ proc parsePrimary(p: Parser): AstNode =
 
     if p.match(tokDot):
         let sub = p.consume(tokIdentifier, "Expected property after '.'").lexeme
-        name = name & "_" & sub
+        let resolvedMod = if globalModuleAliases.hasKey(name): globalModuleAliases[name] else: name
+        name = resolvedMod & "_" & sub
 
     var args: seq[AstNode] = @[]
 
-    while p.peek().kind in {tokStringLit, tokNumberLit, tokFloatLit, tokDollar, tokAmpersand, tokIdentifier, tokInput, tokLBracket, tokLParen, tokMacroRef}:
+    while p.peek().kind in {tokStringLit, tokNumberLit, tokFloatLit, tokDollar, tokAmpersand, tokIdentifier, tokInput, tokLBracket, tokLParen, tokMacroRef, tokMinus, tokNot}:
         args.add(p.parseExpression())
         discard p.match(tokComma)
 
@@ -365,7 +415,12 @@ proc parseImport(p: Parser): seq[AstNode] =
     let subParser = newParser(tokens)
     let moduleAst = subParser.parseProgram()
 
-    prefixAst(moduleAst.stmts, moduleName)
+    let actualModuleName = splitFile(filename).name
+    globalModuleAliases[moduleName] = actualModuleName
+    globalModuleAliases[actualModuleName] = actualModuleName
+    globalModuleAliases[moduleName.toLowerAscii()] = actualModuleName
+    globalModuleAliases[actualModuleName.toLowerAscii()] = actualModuleName
+    prefixAst(moduleAst.stmts, actualModuleName)
     let isCompiledPackage = filename.contains("packages" & $DirSep)
     for n in moduleAst.stmts:
         n.fromImport = true
@@ -539,7 +594,9 @@ proc parseStatement(p: Parser): AstNode =
     let lineNum = t.line
     var name = p.advance().lexeme
     if p.match(tokDot):
-        name = name & "_" & p.consume(tokIdentifier, "prop").lexeme
+        let prop = p.consume(tokIdentifier, "prop").lexeme
+        let resolvedMod = if globalModuleAliases.hasKey(name): globalModuleAliases[name] else: name
+        name = resolvedMod & "_" & prop
     if p.match(tokColon):
         return AstNode(kind: nkAssignment, varName: name, varValue: p.parseExpression())
     elif p.match(tokLBrace):
@@ -559,7 +616,7 @@ proc parseStatement(p: Parser): AstNode =
         return AstNode(kind: nkCommand, callName: name, callArgs: args)
     else:
         var args: seq[AstNode] = @[]
-        if p.peek().kind in {tokNumberLit, tokFloatLit, tokStringLit, tokDollar, tokAmpersand, tokIdentifier, tokInput, tokLBracket, tokLParen}:
+        if p.peek().kind in {tokNumberLit, tokFloatLit, tokStringLit, tokDollar, tokAmpersand, tokIdentifier, tokInput, tokLBracket, tokLParen, tokMacroRef, tokMinus, tokNot}:
             args.add(p.parseExpression())
             while p.match(tokComma): args.add(p.parseExpression())
         return AstNode(kind: nkCommand, callName: name, callArgs: args, line: lineNum)
@@ -569,43 +626,46 @@ proc parseStatement(p: Parser): AstNode =
     discard p.consume(tokAmpersand, "Expected '&' before loop variable")
     let firstVarName = p.consume(tokIdentifier, "Expected variable name").lexeme
 
+    var keyName = ""
+    var valName = ""
+    var target: AstNode
+
     if p.peek().kind == tokComma:
       discard p.advance() # Consume ','
-      discard p.consume(tokAmpersand, "Expected '&' before value variable")
-      let valName = p.consume(tokIdentifier, "Expected value variable name").lexeme
-      discard p.consume(tokComma, "Expected ',' after value variable")
-      let target = p.parseExpression()
+      if p.peek().kind == tokAmpersand:
+        discard p.advance() # Consume '&'
+        valName = p.consume(tokIdentifier, "Expected value variable name").lexeme
+        keyName = firstVarName
+        if p.peek().kind == tokIn:
+          discard p.advance()
+        else:
+          discard p.consume(tokComma, "Expected ',' or 'in' after value variable")
+        target = p.parseExpression()
+      else:
+        # single variable: foreach &val, $target:
+        valName = firstVarName
+        target = p.parseExpression()
       discard p.consume(tokColon, "Expected ':' after foreach declaration")
-
-      var bodyStmts: seq[AstNode] = @[]
-      while p.peek().kind != tokEnd and p.peek().kind != tokEof:
-        while p.peek().kind == tokEol: discard p.advance()
-        if p.peek().kind == tokEnd: break
-        bodyStmts.add(p.parseStatement())
-        while p.peek().kind == tokEol: discard p.advance()
-      discard p.consume(tokEnd, "Expected 'end'")
-
-      let bodyBlock = AstNode(kind: nkBlock, blockStmts: bodyStmts)
-      return AstNode(kind: nkForeachMap, mapLoopKey: firstVarName, mapLoopVal: valName, mapLoopTarget: target, mapLoopBody: bodyBlock, line: t.line)
 
     elif p.peek().kind == tokIn:
       discard p.advance() # Consume 'in'
-      let target = p.parseExpression()
+      valName = firstVarName
+      target = p.parseExpression()
       discard p.consume(tokColon, "Expected ':' after foreach declaration")
 
-      var bodyStmts: seq[AstNode] = @[]
-      while p.peek().kind != tokEnd and p.peek().kind != tokEof:
-        while p.peek().kind == tokEol: discard p.advance()
-        if p.peek().kind == tokEnd: break
-        bodyStmts.add(p.parseStatement())
-        while p.peek().kind == tokEol: discard p.advance()
-      discard p.consume(tokEnd, "Expected 'end'")
-
-      let bodyBlock = AstNode(kind: nkBlock, blockStmts: bodyStmts)
-      return AstNode(kind: nkForeachFile, fileLoopVar: firstVarName, fileLoopTarget: target, fileLoopBody: bodyBlock, line: t.line)
-
     else:
-      discard p.consume(tokIn, "Expected 'in' or ',' after foreach loop variable")
+      ERR("Expected ',' or 'in' after foreach variable", p.peek().line)
+
+    var bodyStmts: seq[AstNode] = @[]
+    while p.peek().kind != tokEnd and p.peek().kind != tokEof:
+      while p.peek().kind == tokEol: discard p.advance()
+      if p.peek().kind == tokEnd: break
+      bodyStmts.add(p.parseStatement())
+      while p.peek().kind == tokEol: discard p.advance()
+    discard p.consume(tokEnd, "Expected 'end'")
+
+    let bodyBlock = AstNode(kind: nkBlock, blockStmts: bodyStmts)
+    return AstNode(kind: nkForeachMap, mapLoopKey: keyName, mapLoopVal: valName, mapLoopTarget: target, mapLoopBody: bodyBlock, line: t.line)
 
   of tokStringLit, tokNumberLit, tokFloatLit, tokLParen, tokLBracket, tokMinus, tokNot, tokDollar, tokAmpersand, tokInput, tokCall, tokMacroRef:
     return p.parseExpression()

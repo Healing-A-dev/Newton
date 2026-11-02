@@ -1,0 +1,88 @@
+; Filename: serializer.nt
+; Description: Binary GVT bytecode serializer for Newton self-hosting
+using errors
+
+fun parseOpcode: @args op
+	set val: 0
+	set len: sizeof $op
+	for &i, 0, $len, 1:
+		set c: substring $op, $i, 1
+		set a: string.ascii $c
+		val: $val * 36
+		if ($a >= 48) and ($a <= 57):
+			val: $val + ($a - 48)
+		elseif ($a >= 65) and ($a <= 90):
+			val: $val + (($a - 65) + 10)
+		end
+	end
+	return [@ok, $val]
+end
+
+fun serializeToBinary: @args filename, bytecode
+	set fd: sys_open $filename, 577
+	if $fd < 0:
+		errors.err "Could not open binary file for writing: '" << $filename << "'", 0, "", ""
+		return [@ok, 0]
+	end
+
+	set bytes: []
+
+	; Magic "GVM"
+	push $bytes, 71
+	push $bytes, 86
+	push $bytes, 77
+
+	; Version 1
+	push $bytes, 1
+
+	; Instruction count (uint32, little-endian)
+	set count: sizeof $bytecode
+	push $bytes, ($count % 256)
+	push $bytes, (($count >> 8) % 256)
+	push $bytes, (($count >> 16) % 256)
+	push $bytes, (($count >> 24) % 256)
+
+	for &i, 0, $count, 1:
+		set instr: $bytecode{$i}
+		set parts: []
+		if (typeof $instr) == "string":
+			parts: string.split $instr, " "
+		else:
+			parts: $instr
+		end
+
+		set opStr: $parts{0}
+		set opByte: serializer.parseOpcode $opStr
+		push $bytes, $opByte
+
+		set numParts: sizeof $parts
+		for &argIdx, 1, 4, 1:
+			set arg: "00"
+			if $argIdx < $numParts:
+				arg: $parts{$argIdx}
+			end
+			set argLen: sizeof $arg
+			push $bytes, $argLen
+			for &cIdx, 0, $argLen, 1:
+				set ch: substring $arg, $cIdx, 1
+				push $bytes, (string.ascii $ch)
+			end
+		end
+
+		; Flush chunks to avoid array heap limits
+		if (sizeof $bytes) >= 100:
+			__file_write_bin $fd, $bytes
+			bytes: []
+		end
+	end
+
+	; Flush remaining bytes
+	if (sizeof $bytes) > 0:
+		__file_write_bin $fd, $bytes
+		bytes: []
+	end
+
+	sys_close $fd
+	return [@ok, 1]
+end
+

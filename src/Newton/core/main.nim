@@ -1,12 +1,27 @@
 import strutils, os, osproc, streams
-import lexer, parser, codegen, ast, cli, errors, optimizer
+import lexer, parser, codegen, ast, cli, errors, optimizer, lsp
 
 var ERRNO: int = 0
+proc getNewtonLibPath(): string =
+  let localLib = getCurrentDir() / "src" / "Newton" / "lib" / "libnewton.o"
+  if fileExists(localLib): return localLib
+  return getHomeDir() / ".newton" / "lib" / "libnewton.o"
+
+proc getNewtonWinLibPath(): string =
+  let localLib = getCurrentDir() / "src" / "Newton" / "lib" / "libnewton.a"
+  if fileExists(localLib): return localLib
+  return getHomeDir() / ".newton" / "lib" / "libnewton.a"
+
+proc getGvmDirPath(): string =
+  let localGvm = getCurrentDir() / "toolchains" / "gvm"
+  if fileExists(localGvm / "gvm"): return localGvm
+  return getHomeDir() / ".newton" / "toolchains" / "gvm"
+
 let
   SCRIPT_PATH: string = getHomeDir() / ".newton" / "bin" / "newton@core__script.component"
-  NEWTON_LIB_PATH: string = getHomeDir() / ".newton" / "lib" / "libnewton.o"
-  NEWTON_WIN_LIB_PATH: string = getHomeDir() / ".newton" / "lib" / "libnewton.a"
-  GVM_DIR_PATH: string = getHomeDir() / ".newton" / "toolchains" / "gvm"
+  NEWTON_LIB_PATH: string = getNewtonLibPath()
+  NEWTON_WIN_LIB_PATH: string = getNewtonWinLibPath()
+  GVM_DIR_PATH: string = getGvmDirPath()
 
 proc parseOpcode(op: string): uint8 =
   var val = 0
@@ -37,16 +52,12 @@ proc serializeToBinary(filename: string, bytecode: seq[string]) =
 
 
 proc stripFileExtension(FILE_NAME: string): string =
-  var
-    char_array: seq[char] = @[]
-    iter: int = 1
-    c: char = FILE_NAME[FILE_NAME.len - iter]
-
-  while c != '.':
-    char_array.add(c)
-    iter.inc()
-    c = FILE_NAME[FILE_NAME.len - iter]
-  return FILE_NAME[0..<(FILE_NAME.len - (char_array.len + 1))]
+  if not FILE_NAME.contains('.'): return FILE_NAME
+  let lastDot = FILE_NAME.rfind('.')
+  let lastSlash = max(FILE_NAME.rfind('/'), FILE_NAME.rfind('\\'))
+  if lastDot > lastSlash:
+    return FILE_NAME[0 ..< lastDot]
+  return FILE_NAME
 
 
 proc readFileContent(path: string): string =
@@ -95,6 +106,10 @@ proc main(INPUT_FILE, OUTPUT_FILE: string, e: STATES) =
 
 when isMainModule:
   var data: STATES = parseArgs(commandLineParams())
+  if data.State == "lsp":
+    lsp.startServer()
+    quit(0)
+
   if data.Output == "":
     data.Output = stripFileExtension(data.Input)
 

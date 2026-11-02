@@ -1,15 +1,61 @@
 using errors
-using lexer
+using enum
 using ast
+using lexer
 using parser
-
-set INPUT_FILE*: "test.nt"
-set ERRNO: 0
+using codegen
+using serializer
 
 fun main:
-	errors.currentCompilingFile: $INPUT_FILE
-	set source: readfile $INPUT_FILE
+	set argc: sys_argc 0
+	set inputFile: "/home/healing/Documents/Projects/Languages/nim/Newton/src/Newton/bootstrap/test.nt"
+	set outputFile: "test"
+
+	set numArgs: $argc - 1
+	set idx: 0
+	while $idx < $numArgs:
+		set arg: sys_argv $idx
+		if $arg == "build":
+			idx: $idx + 1
+		elseif $arg == "-o":
+			idx: $idx + 1
+			if $idx < $numArgs:
+				outputFile: sys_argv $idx
+				idx: $idx + 1
+			end
+		else:
+			inputFile: $arg
+			idx: $idx + 1
+		end
+	end
+
+	errors.currentCompilingFile: $inputFile
+	set source: readfile $inputFile
+	@println "Read source (" << $inputFile << "): " << (string (sizeof $source)) << " bytes"
+
 	set tokens: lexer.lex $source
+	@println "Lexed tokens: " << (string (sizeof $tokens))
+
 	set p: parser.newParser $tokens
-	@println $INPUT_FILE << " ~> \x1b[92mPASSED\x1b[0m"
+	set astRoot: parser.parseProgram $p
+	parser.injectPrelude $astRoot
+	@println "Parsed AST successfully"
+
+	set bytecode: codegen.compile $astRoot
+	@println "Compiled bytecode: " << (string (sizeof $bytecode)) << " instructions"
+
+	set gvtFile: $outputFile << ".gvt"
+	serializer.serializeToBinary $gvtFile, $bytecode
+	@println "Serialized GVT to: " << $gvtFile
+
+	set gvmCmd: "" << (os.getenv "HOME") << "/.newton/toolchains/gvm/gvm build -i:" << $gvtFile << " -o:" << $outputFile << " -l:~/.newton/lib/libnewton.o"
+	@println "Invoking: " << $gvmCmd
+	set pid: proc_fork 0
+	if $pid == 0:
+		sys_exec $gvmCmd
+		proc_exit 1
+	else:
+		proc_wait 0
+	end
+	@println "\x1b[92mBuild Complete:\x1b[0m " << $outputFile
 end

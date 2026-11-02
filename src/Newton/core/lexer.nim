@@ -22,6 +22,7 @@ const keywords = {
   "set":      tokSet,
   "if":       tokIf,
   "elseif":   tokElseIf,
+  "elif":     tokElseIf,
   "else":     tokElse,
   "end":      tokEnd,
   "fun":      tokFn,

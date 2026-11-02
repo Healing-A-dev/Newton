@@ -278,13 +278,38 @@ proc gen(c: Compiler, node: AstNode): string =
 
   of nkLiteral:
     if node.isString:
-      let label = "str_" & $c.stringCounter
-      c.stringCounter.inc()
       let realStr = unescape(node.strVal)
-      let hexStr = toHexStr(realStr)
-      let safeStr = "[" & hexStr & "]"
-      c.emit("1E", label, safeStr, "00")
-      return "$" & label
+      if realStr.len > 120:
+        var chunks: seq[string] = @[]
+        var i = 0
+        while i < realStr.len:
+          let chunkSize = min(120, realStr.len - i)
+          chunks.add(realStr[i ..< i + chunkSize])
+          i += chunkSize
+
+        var currentLoc = ""
+        for idx, chunk in chunks:
+          let label = "str_" & $c.stringCounter
+          c.stringCounter.inc()
+          let hexStr = toHexStr(chunk)
+          let safeStr = "[" & hexStr & "]"
+          c.emit("1E", label, safeStr, "00")
+          let chunkLoc = "$" & label
+          if idx == 0:
+            currentLoc = chunkLoc
+          else:
+            let dest = c.allocTemp()
+            c.emit("03", dest, "0", "00")
+            c.emit("2D", dest, currentLoc, chunkLoc)
+            currentLoc = dest
+        return currentLoc
+      else:
+        let label = "str_" & $c.stringCounter
+        c.stringCounter.inc()
+        let hexStr = toHexStr(realStr)
+        let safeStr = "[" & hexStr & "]"
+        c.emit("1E", label, safeStr, "00")
+        return "$" & label
     else:
       try:
         let iVal = parseInt(node.strVal)
@@ -665,9 +690,14 @@ proc gen(c: Compiler, node: AstNode): string =
       return dest
 
     if node.callName == "substring":
-      let strLoc = c.gen(node.callArgs[0])
-      let startLoc = c.gen(node.callArgs[1])
-      let lenLoc = c.gen(node.callArgs[2])
+      var args = node.callArgs
+      if args.len == 1 and args[0].kind == nkMapLit and args[0].isList:
+        args = args[0].mapValues
+      if args.len < 3:
+        ERR("Function 'substring' requires 3 arguments (str, start, len), but got " & $args.len, node.line, "E010", "Usage: substring <str>, <start>, <len>")
+      let strLoc = c.gen(args[0])
+      let startLoc = c.gen(args[1])
+      let lenLoc = c.gen(args[2])
       let dest = c.allocTemp()
       c.emit("40", "%rdi", strLoc, "00")
       c.emit("40", "%rsi", startLoc, "00")
@@ -1042,7 +1072,18 @@ proc gen(c: Compiler, node: AstNode): string =
 
     # Initialize index counter (Tagged 0 is '1')
     let idxReg = c.allocTemp()
-    c.emit("03", idxReg, "1", "00")
+    c.emit("03", idxReg, "0", "00")
+    c.emit("0G", idxReg, "$1", "00")
+
+    var keyVar = ""
+    if node.mapLoopKey != "":
+      keyVar = c.allocVar()
+      c.locals[node.mapLoopKey] = keyVar
+      c.emit("03", keyVar, "0", "00")
+
+    let valVar = c.allocVar()
+    c.locals[node.mapLoopVal] = valVar
+    c.emit("03", valVar, "0", "00")
 
     let startLabel = c.newLabel()
     let endLabel = c.newLabel()
@@ -1056,19 +1097,14 @@ proc gen(c: Compiler, node: AstNode): string =
     c.emit("40", cmpReg, "%rax", "00")
     c.emit("0P", cmpReg, endLabel, "00")   # 0P jumps if False
 
-    # Assign &<key> to the current Index
-    let keyVar = c.allocVar()
-    c.locals[node.mapLoopKey] = keyVar
-    c.emit("03", keyVar, "0", "00")
-    c.emit("40", "%rdi", targetLoc, "00")
-    c.emit("40", "%rsi", idxReg, "00")
-    c.emit("1B", "collection_get_key", "0", "00")
-    c.emit("40", keyVar, "%rax", "00")
+    if node.mapLoopKey != "":
+      # Assign &<key> to the current Index / Key
+      c.emit("40", "%rdi", targetLoc, "00")
+      c.emit("40", "%rsi", idxReg, "00")
+      c.emit("1B", "collection_get_key", "0", "00")
+      c.emit("40", keyVar, "%rax", "00")
 
     # Assign &<val> to collection_get(target, index)
-    let valVar = c.allocVar()
-    c.locals[node.mapLoopVal] = valVar
-    c.emit("03", valVar, "0", "00")
     c.emit("40", "%rdi", targetLoc, "00")
     c.emit("40", "%rsi", idxReg, "00")
     c.emit("1B", "collection_get", "0", "00")
@@ -1110,16 +1146,21 @@ proc gen(c: Compiler, node: AstNode): string =
     c.emit("20", mapLoc, "00", "00")
 
     if node.isList:
-      for i, valNode in node.mapValues:
-        let valLoc = c.gen(valNode)
+      var valLocs: seq[string] = @[]
+      for valNode in node.mapValues:
+        valLocs.add(c.gen(valNode))
+      for i in countdown(valLocs.len - 1, 0):
         let taggedVal = (i shl 1) or 1
         let indexLoc = "$" & $taggedVal
-        c.emit("21", mapLoc, indexLoc, valLoc)
+        c.emit("21", mapLoc, indexLoc, valLocs[i])
     else:
+      var keyLocs: seq[string] = @[]
+      var valLocs: seq[string] = @[]
       for i in 0 ..< node.mapKeys.len:
-        let keyLoc = c.gen(node.mapKeys[i])
-        let valLoc = c.gen(node.mapValues[i])
-        c.emit("21", mapLoc, keyLoc, valLoc)
+        keyLocs.add(c.gen(node.mapKeys[i]))
+        valLocs.add(c.gen(node.mapValues[i]))
+      for i in countdown(keyLocs.len - 1, 0):
+        c.emit("21", mapLoc, keyLocs[i], valLocs[i])
     return mapLoc
 
   of nkMapGet:

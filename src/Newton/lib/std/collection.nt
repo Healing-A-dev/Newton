@@ -168,9 +168,7 @@ fun zip: @args list1, list2
 	set output: ()
 	set length: 0
 
-	set size1: sizeof $list1
-	set size2: sizeof $list2
-
+	set [size1, size2]: [(sizeof $list1), (sizeof $list2)]
 	if $size1 < $size2 or $size1 == $size2:
 		length: $size1
 	else:
@@ -278,6 +276,28 @@ fun toList: @args val
 	return ["ok", $result]
 end
 
+; Shift all values in the given list to the left one
+fun shiftLeft: @args list_val
+	if (typeof $list_val) != "list":
+		return ["error", "collection.shiftLeft ; Expected type `list` got `" << (typeof $list_val) << "`"]
+	end
+	list_val{(sizeof $list_val)}: $list_val{0}
+	__sys_collection_delete $list_val, 0
+end
+
+; Shift all values in the given list to the right on
+fun shiftRight: @args list_val
+	if (typeof $list_val) != "list":
+		return ["error", "collection.shiftLeft ; Expected type `list` got `" << (typeof $list_val) << "`"]
+	end
+	set last_value: $list_val{(sizeof $list_val) - 1}
+	set s: (sizeof $list_val) - 1
+	while $s >= 0:
+		list_val{$s}: $list_val{$s - 1}
+		s: $s - 1
+	end
+	list_val{0}: $last_value
+end
 
 ; --- WORK IN PROGRESS SECTION --- ;
 
@@ -285,4 +305,156 @@ end
 fun mallocArray: @args size
 	set arr: __alloc_array $size
 	return [@ok, $arr]
+end
+
+; Checks if the collection contains the given value
+fun contains: @args coll, item
+	set c_type: typeof $coll
+	if $c_type == "list":
+		for &idx, 0, (sizeof $coll), 1:
+			if $coll{$idx} == $item:
+				return ["ok", 1]
+			end
+		end
+		return ["ok", 0]
+	elseif $c_type == "map":
+		foreach &k, &v in $coll:
+			if $v == $item:
+				return ["ok", 1]
+			end
+		end
+		return ["ok", 0]
+	else:
+		return ["error", "collection.contains ; Expected type `list;map` got `" << $c_type << "`"]
+	end
+end
+
+; Returns the first index of the given item in a list
+fun indexOf: @args list_val, item
+	if (typeof $list_val) != "list":
+		return ["error", "collection.indexOf ; Expected type `list` got `" << (typeof $list_val) << "`"]
+	end
+	for &idx, 0, (sizeof $list_val), 1:
+		if $list_val{$idx} == $item:
+			return ["ok", $idx]
+		end
+	end
+	return ["ok", -1]
+end
+
+; Slices a sub-list from start index for count items
+fun slice: @args list_val, start, count
+	if (typeof $list_val) != "list":
+		return ["error", "collection.slice ; Expected type `list` got `" << (typeof $list_val) << "`"]
+	end
+	set result: []
+	set total: sizeof $list_val
+	set end_idx: $start + $count
+	if $end_idx > $total:
+		end_idx: $total
+	end
+	set i: $start
+	while $i < $end_idx:
+		result{(sizeof $result)}: $list_val{$i}
+		i: $i + 1
+	end
+	return ["ok", $result]
+end
+
+; Returns a list of all keys in a map
+fun keys: @args map_val
+	if (typeof $map_val) != "map":
+		return ["error", "collection.keys ; Expected type `map` got `" << (typeof $map_val) << "`"]
+	end
+	set key_list: []
+	foreach &k, &v in $map_val:
+		key_list{(sizeof $key_list)}: $k
+	end
+	return ["ok", $key_list]
+end
+
+; Returns a list of all values in a map
+fun values: @args map_val
+	if (typeof $map_val) != "map":
+		return ["error", "collection.values ; Expected type `map` got `" << (typeof $map_val) << "`"]
+	end
+	set val_list: []
+	foreach &k, &v in $map_val:
+		val_list{(sizeof $val_list)}: $v
+	end
+	return ["ok", $val_list]
+end
+
+; Returns a reversed copy of a list
+fun reverse: @args list_val
+	if (typeof $list_val) != "list":
+		return ["error", "collection.reverse ; Expected type `list` got `" << (typeof $list_val) << "`"]
+	end
+	set result: []
+	set idx: (sizeof $list_val) - 1
+	while $idx >= 0:
+		result{(sizeof $result)}: $list_val{$idx}
+		idx: $idx - 1
+	end
+	return ["ok", $result]
+end
+
+; Creates a shallow clone of a list or map
+fun clone: @args coll
+	set c_type: typeof $coll
+	if $c_type == "list":
+		set copy: []
+		for &idx, 0, (sizeof $coll), 1:
+			copy{$idx}: $coll{$idx}
+		end
+		return ["ok", $copy]
+	elseif $c_type == "map":
+		set copy: ()
+		foreach &k, &v in $coll:
+			copy{$k}: $v
+		end
+		return ["ok", $copy]
+	else:
+		return ["error", "collection.clone ; Expected type `list;map` got `" << $c_type << "`"]
+	end
+end
+
+; Clears all items from a list or map
+fun clear: @args coll
+	set c_type: typeof $coll
+	if $c_type == "list":
+		while (sizeof $coll) > 0:
+			__sys_collection_delete $coll, 0
+		end
+		return ["ok", $coll]
+	elseif $c_type == "map":
+		while (sizeof $coll) > 0:
+			foreach &k, &v in $coll:
+				__sys_collection_delete $coll, $k
+				break
+			end
+		end
+		return ["ok", $coll]
+	else:
+		return ["error", "collection.clear ; Expected type `list;map` got `" << $c_type << "`"]
+	end
+end
+
+; Flattens a 2D list into a 1D list
+fun flatten: @args nested_list
+	if (typeof $nested_list) != "list":
+		return ["error", "collection.flatten ; Expected type `list` got `" << (typeof $nested_list) << "`"]
+	end
+	set flat: []
+	for &i, 0, (sizeof $nested_list), 1:
+		set elem: $nested_list{$i}
+		if (typeof $elem) == "list":
+			for &j, 0, (sizeof $elem), 1:
+				flat{(sizeof $flat)}: $elem{$j}
+			end
+		else:
+			flat{(sizeof $flat)}: $elem
+		end
+	end
+	return ["ok", $flat]
 end

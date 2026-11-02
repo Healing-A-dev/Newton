@@ -8,7 +8,7 @@ fun main:
   set filename: $argv{0}
   if $filename == 0:
     @println terminal.error "Filename not provided"
-    exit 1
+    @quit 1
   end
 
   @println "Reading file: " << $filename

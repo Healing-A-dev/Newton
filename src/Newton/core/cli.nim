@@ -27,6 +27,7 @@ commands:
    init <name>    > Initialize a new Newton project skeleton.
    build <file>   > Compile a Newton file or project. [default]
    run <file>     > Compile and run immediately.
+   lsp            > Launch the Newton Language Server Protocol (LSP) daemon.
    help           > Display this message.
    version        > Display the installed build version.
 
@@ -44,7 +45,8 @@ advanced flags:
    --link-C             > Link with C.
    --script             > Treat the given file as a newton script file (.nts).
    --noStdlib           > Prevents the standard library from being automatically imported.
-   -L                   > Specify a file to link with.
+   -L                   > Specify a library search directory (-L <dir>).
+   -l                   > Specify a file or library to link with (-l <file.o>).
    -O                   > Compile to an object file.
    -GVM                 > Stop compilation at GravityVM bytecode generation.
 """
@@ -91,6 +93,19 @@ proc parseArgs*(ARGS: seq[string]): STATES =
   DATA.isScript = false
   DATA.noStdlib = false
 
+  proc addLinkCFlags() =
+    if not linkedC:
+      DATA.LinkerFiles.add("-l:-m")
+      DATA.LinkerFiles.add("-l:elf_x86_64")
+      DATA.LinkerFiles.add("-l:-L/usr/lib64")
+      DATA.LinkerFiles.add("-l:-L/usr/lib/x86_64-linux-gnu")
+      DATA.LinkerFiles.add("-l:-L/usr/lib")
+      DATA.LinkerFiles.add("-l:-lc")
+      DATA.LinkerFiles.add("-l:-lm")
+      DATA.LinkerFiles.add("-l:--dynamic-linker")
+      DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
+      linkedC = true
+
   if ARGS.len == 0:
     echo helpMessage
     quit(1)
@@ -114,6 +129,9 @@ proc parseArgs*(ARGS: seq[string]): STATES =
   elif cmd == "version":
     echo "newton " & VERSION
     quit(0)
+  elif cmd == "lsp":
+    DATA.State = "lsp"
+    counter = 1
   elif cmd == "self-update":
     echo "WIP"
     quit(0)
@@ -143,37 +161,21 @@ proc parseArgs*(ARGS: seq[string]): STATES =
       counter.inc
     of "-v", "--verbose":
       DATA.Verbose = "-verbose:true"
-    of "-l":
-      if ARGS[counter + 1].len >= 2:
-        case ARGS[counter + 1][^2..^1]
-        of ".o", ".a":
-          DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
-          counter.inc
-        else:
-          if ARGS[counter + 1].contains(".so."):
-            DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
-            counter.inc
-          else:
-            if linkedC == false:
-              DATA.LinkerFiles.add("-l:-lc")
-              DATA.LinkerFiles.add("-l:--dynamic-linker")
-              DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
-              linkedC = true
-            if ARGS[counter + 1].endsWith(".so"):
-              DATA.LinkerFiles.add("-l:" & ARGS[counter + 1])
-              counter.inc
-            else:
-              DATA.LinkerFiles.add("-l:-l" & ARGS[counter + 1])
-            counter.inc
-      else:
-        DATA.LinkerFiles.add("-l:-l" & ARGS[counter + 1])
+    of "-L":
+      if counter + 1 < ARGS.len:
+        DATA.LinkerFiles.add("-l:-L" & ARGS[counter + 1])
         counter.inc
+    of "-l":
+      if counter + 1 < ARGS.len:
+        let target = ARGS[counter + 1]
+        counter.inc
+        if target.endsWith(".o") or target.endsWith(".a") or target.contains(".so"):
+          DATA.LinkerFiles.add("-l:" & target)
+        else:
+          addLinkCFlags()
+          DATA.LinkerFiles.add("-l:-l" & target)
     of "--link-C":
-      if linkedC == false:
-        DATA.LinkerFiles.add("-l:-lc")
-        DATA.LinkerFiles.add("-l:--dynamic-linker")
-        DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
-        linkedC = true
+      addLinkCFlags()
     of "--noStdlib":
       DATA.noStdlib = true
     of "--script":
@@ -234,18 +236,14 @@ proc parseArgs*(ARGS: seq[string]): STATES =
                       elif key == "script":  DATA.isScript = true
                       elif key == "verbose": DATA.Verbose  = "-verbose:true"
                       elif key == "link-C":
-                         DATA.LinkerFiles.add("-l:-lc")
-                         DATA.LinkerFiles.add("-l:-lm")
-                         DATA.LinkerFiles.add("-l:--dynamic-linker")
-                         DATA.LinkerFiles.add("-l:/lib64/ld-linux-x86-64.so.2")
-                         linkedC = true
+                          addLinkCFlags()
 
               elif currentSection == "packages":
                   let pkgObj = "packages" / key & ".o"
                   if fileExists(pkgObj):
                       DATA.LinkerFiles.add("-l:" & pkgObj)
 
-  if DATA.Input == "" and DATA.State != "help":
+  if DATA.Input == "" and DATA.State != "help" and DATA.State != "lsp":
       echo "\e[1;31merror:\e[0m no input file provided or .Newtonproj.toml found."
       quit(1)
 

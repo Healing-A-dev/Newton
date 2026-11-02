@@ -51,6 +51,7 @@ _malloc:
     add %rdi, %rax
     mov %rax, bytes_allocated(%rip)
 
+    jmp .Lmalloc_align
     mov gc_phase(%rip), %rax
     cmp $1, %rax
     je .Lmalloc_step

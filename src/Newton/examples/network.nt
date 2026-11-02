@@ -29,7 +29,7 @@ fun parse_path: @args req
     end
 
     set path_len: $_end - $start
-    return substring($req, $start, $path_len)
+    return substring $req, $start, $path_len
 end
 
 fun handle_client: @args client
@@ -40,14 +40,14 @@ fun handle_client: @args client
         return 0
     end
 
-    # 2. Parse
+    ; 2. Parse
     set path: parse_path $req
-    set pid: process.id
+    set pid: process.id 0
 
-    # Log to console (safe because print is now polymorphic)
+    ; Log to console
     @println "[Child PID: " << (string $pid) << "] Request: " << $path
 
-    # 3. Router
+    ; 3. Router
     set status: "404 Not Found"
     set body: "<h1>404 Not Found</h1>"
     set content_type: "text/html"
@@ -84,23 +84,23 @@ end
 
 fun main:
     @println "--- Newton Forking HTTPD ---"
-    @println "Parent PID: " << (string process.id)
+    @println "Parent PID: " << (string process.id 0)
 
-    set server: web.new $web.socket
+    set server: web.new
     web.bind $server, 8080
     web.listen $server
     @println "Listening on 0.0.0.0:8080..."
 
     while 1 == 1:
         set client: web.accept $server
-        set pid: process.fork
+        set pid: process.fork 0
         if $pid == 0:
-            # --- CHILD PROCESS ---
+            ; --- CHILD PROCESS ---
             web.close $server
             handle_client $client
             process.exit 0
         else:
-            # --- PARENT PROCESS ---
+            ; --- PARENT PROCESS ---
             web.close $client
         end
     end

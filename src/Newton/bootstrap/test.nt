@@ -1,5 +1,30 @@
-test
+set G*: 42
 
-fun main
+fun add: @args a, b
+	return $a + $b
+end
+
+fun main:
+	set x: 10
+	set y: 20
+	set z: add $x, $y
+	set list: [1, 2, 3]
+	set map: ("name": "Newton", "val": 100)
+
+	if $z > 25:
+		@println "Z is greater than 25"
+	else:
+		@println "Z is smaller"
+	end
+
+	for &i, 0, 3, 1:
+		@println "Loop index: " << (string $i)
+	end
+
+	match $x:
+		10 -> @println "x is 10"
+		20 -> @println "x is 20"
+	end
+
 	@println "Hello, World!"
 end

@@ -205,13 +205,30 @@ end
 
 fun stripWhitespace: @args string_value
 	set size: (sizeof $string_value)
-	set [lp, rp]: [0, $size - 1]
-	while 1:
-		if $string_value{$lp} == 32 or $string_value{$lp} == 9: lp: $lp + 1 end
-		if $string_value{$rp} == 32 or $string_value{$lp} == 9: rp: $rp - 1 end
-		if ($string_value{$lp} != 32) and ($string_value{$rp} != 32) and ($string_value{$lp} != 9) and ($string_value{$rp} != 9): break end
+	if $size == 0:
+		return ["ok", ""]
 	end
-	return ["ok", (substring $string_value, $lp, ($rp - $lp ) + 1)]
+	set [lp, rp]: [0, $size - 1]
+	while $lp <= $rp:
+		set c: $string_value{$lp}
+		if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+			lp: $lp + 1
+		else:
+			break
+		end
+	end
+	while $rp >= $lp:
+		set c: $string_value{$rp}
+		if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+			rp: $rp - 1
+		else:
+			break
+		end
+	end
+	if $lp > $rp:
+		return ["ok", ""]
+	end
+	return ["ok", (substring $string_value, $lp, ($rp - $lp) + 1)]
 end
 
 fun char: @args ascii
@@ -276,4 +293,101 @@ fun upper: @args str
 		end
 	end
 	return $outstr
+end
+
+fun repeat: @args str, count
+	set outstr: ""
+	for &s, 0, $count, 1:
+		outstr: $outstr << $str
+	end
+	return $outstr
+end
+
+; Alias for stripWhitespace
+fun trim: @args str
+	return (string.stripWhitespace $str)
+end
+
+; Strips leading whitespace from string
+fun lstrip: @args str
+	set size: sizeof $str
+	if $size == 0: return ["ok", ""] end
+	set lp: 0
+	while $lp < $size:
+		set c: $str{$lp}
+		if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+			lp: $lp + 1
+		else:
+			break
+		end
+	end
+	if $lp >= $size: return ["ok", ""] end
+	return ["ok", (substring $str, $lp, $size - $lp)]
+end
+
+; Strips trailing whitespace from string
+fun rstrip: @args str
+	set size: sizeof $str
+	if $size == 0: return ["ok", ""] end
+	set rp: $size - 1
+	while $rp >= 0:
+		set c: $str{$rp}
+		if $c == 32 or $c == 9 or $c == 10 or $c == 13:
+			rp: $rp - 1
+		else:
+			break
+		end
+	end
+	if $rp < 0: return ["ok", ""] end
+	return ["ok", (substring $str, 0, $rp + 1)]
+end
+
+; Counts non-overlapping occurrences of pattern in str
+fun count: @args str, pattern
+	set s_len: sizeof $str
+	set p_len: sizeof $pattern
+	if $p_len == 0 or $p_len > $s_len:
+		return ["ok", 0]
+	end
+	set occurrences: 0
+	set i: 0
+	set limit: $s_len - $p_len
+	while $i <= $limit:
+		set chunk: substring $str, $i, $p_len
+		if $chunk == $pattern:
+			occurrences: $occurrences + 1
+			i: $i + $p_len
+		else:
+			i: $i + 1
+		end
+	end
+	return ["ok", $occurrences]
+end
+
+; Left-pads string to target length with pad_char
+fun padLeft: @args str, target_len, pad_char
+	set current_len: sizeof $str
+	if $current_len >= $target_len:
+		return ["ok", $str]
+	end
+	set diff: $target_len - $current_len
+	set padding: ""
+	for &i, 0, $diff, 1:
+		padding: $padding << $pad_char
+	end
+	return ["ok", $padding << $str]
+end
+
+; Right-pads string to target length with pad_char
+fun padRight: @args str, target_len, pad_char
+	set current_len: sizeof $str
+	if $current_len >= $target_len:
+		return ["ok", $str]
+	end
+	set diff: $target_len - $current_len
+	set padding: ""
+	for &i, 0, $diff, 1:
+		padding: $padding << $pad_char
+	end
+	return ["ok", $str << $padding]
 end

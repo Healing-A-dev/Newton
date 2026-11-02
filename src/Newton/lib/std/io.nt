@@ -20,14 +20,14 @@ fun println: @args val
 		prints "("
 		set [idx, keys_size]: [0, (sizeof $keys)]
 		while $idx < $keys_size:
-			; prints "" << (string $keys{$keys_size - 1 - $idx}) << ": "
 			prints "" << (string $keys{$idx}) << ": "
-			match (typeof $values{$idx}):
-				"map"    -> io.print $values{$idx}
-				"list"   -> io.print $values{$idx}
-				"string" -> prints $values{$idx}
-				"int"    -> prints $values{$idx}
-				"float"  -> prints $values{$idx}
+			set item_type: typeof $values{$idx}
+			if $item_type == "map":
+				io.print $values{$idx}
+			elseif $item_type == "list":
+				io.print $values{$idx}
+			else:
+				prints $values{$idx}
 			end
 			if $idx < $keys_size - 1: prints ", " end
 			idx: $idx + 1
@@ -37,7 +37,14 @@ fun println: @args val
 	elseif $val_type == "list":
 		prints "["
 		for &count, 0, (sizeof $val), 1:
-			prints $val{$count}
+			set item_type: typeof $val{$count}
+			if $item_type == "map":
+				io.print $val{$count}
+			elseif $item_type == "list":
+				io.print $val{$count}
+			else:
+				prints $val{$count}
+			end
 			if $count < (sizeof $val) - 1: prints ", " end
 		end
 		prints "]\n"
@@ -64,25 +71,32 @@ fun print: @args val
 		; Print Loop
 		prints "("
 		set [idx, keys_size]: [0, (sizeof $keys)]
-		while $idx >= $keys_size:
-			; prints "" << (string $keys{$keys_size - 1 - $idx}) << ": "
+		while $idx < $keys_size:
 			prints "" << (string $keys{$idx}) << ": "
-			match (typeof $values{$idx}):
-				"map"    -> io.print $values{$idx}
-				"list"   -> io.print $values{$idx}
-				"string" -> prints $values{$idx}
-				"int"    -> prints $values{$idx}
-				"float"  -> prints $values{$idx}
+			set item_type: typeof $values{$idx}
+			if $item_type == "map":
+				io.print $values{$idx}
+			elseif $item_type == "list":
+				io.print $values{$idx}
+			else:
+				prints $values{$idx}
 			end
 			if $idx < $keys_size - 1: prints ", " end
-			idx: $idx - 1
+			idx: $idx + 1
 		end
 		prints ")"
 		return ["ok", 1]
 	elseif $val_type == "list":
 		prints "["
 		for &count, 0, (sizeof $val), 1:
-			prints $val{$count}
+			set item_type: typeof $val{$count}
+			if $item_type == "map":
+				io.print $val{$count}
+			elseif $item_type == "list":
+				io.print $val{$count}
+			else:
+				prints $val{$count}
+			end
 			if $count < (sizeof $val) - 1: prints ", " end
 		end
 		prints "]"

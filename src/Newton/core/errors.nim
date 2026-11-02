@@ -10,12 +10,10 @@ var isLspMode*: bool = false
 var currentCompilingFile*: string = "main.nt"
 var ERRCOUNT*: int = 0
 
-proc ERR*(Msg: string, Line: int, Code: string = "", Hint: string = ""): void =
-  # Exit early if too many errors are found
-  if ERRCOUNT >= 10:
-    echo "Compilation Failed With <\e[1;31m" & $ERRCOUNT & "+\e[0m> Errors"
-    quit(1)
+proc resetErrorState*() =
+  ERRCOUNT = 0
 
+proc ERR*(Msg: string, Line: int, Code: string = "", Hint: string = ""): void =
   var finalCode = Code
   var finalHint = Hint
 
@@ -34,11 +32,16 @@ proc ERR*(Msg: string, Line: int, Code: string = "", Hint: string = ""): void =
       if finalHint == "": finalHint = "An internal compilation constraint was violated."
 
   if isLspMode:
-      var e = newException(NewtonDiagnostic, Msg)
-      e.line = Line
-      e.code = finalCode
-      e.hint = finalHint
-      raise e
+    var e = newException(NewtonDiagnostic, Msg)
+    e.line = Line
+    e.code = finalCode
+    e.hint = finalHint
+    raise e
+
+  # Exit early if too many errors are found
+  if ERRCOUNT >= 10:
+    echo "Compilation Failed With <\e[1;31m" & $ERRCOUNT & "+\e[0m> Errors"
+    quit(1)
 
   if ERRCOUNT == 0:
     echo "\e[1;31m--- [ COMPILER FAULT ] ---\e[0m"

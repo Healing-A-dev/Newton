@@ -1,9 +1,6 @@
 using enum
 using errors
 
-; Create token enums (this is make the file easier to debug)
-; enum.initTokenEnums
-
 set keywords*: (
 	"set":      $enum.tokSet,
 	"if":       $enum.tokIf,
@@ -34,8 +31,33 @@ fun newToken: @args kind, lexeme, line
 	return [@ok, $Token]
 end
 
-; Alphanumeric Checkers
+; Digit Checker
+fun isDigit: @args char
+	if (typeof $char) != "string": return [@ok, 0] end
+	if (sizeof $char) == 0: return [@ok, 0] end
+	set ascii: string.ascii $char
+	if ($ascii >= 48) and ($ascii <= 57):
+		return [@ok, 1]
+	end
+	return [@ok, 0]
+end
+
+; Alpha Checkers
+fun isAlphaAscii: @args char
+	if (typeof $char) != "string": return [@ok, 0] end
+	if (sizeof $char) == 0: return [@ok, 0] end
+	set ascii: string.ascii $char
+	if ($ascii >= 65) and ($ascii <= 90):
+		return [@ok, 1]
+	elseif ($ascii >= 97) and ($ascii <= 122):
+		return [@ok, 1]
+	end
+	return [@ok, 0]
+end
+
 fun isAlphanumeric: @args char
+	if (typeof $char) != "string": return [@ok, 0] end
+	if (sizeof $char) == 0: return [@ok, 0] end
 	set ascii: string.ascii $char
 	if ($ascii >= 48) and ($ascii <= 57):
 		return [@ok, 1]
@@ -49,43 +71,16 @@ fun isAlphanumeric: @args char
 	return [@ok, 0]
 end
 
-fun isAlphaAscii: @args char
-	set ascii: string.ascii $char
-	if ($ascii >= 65) and ($ascii <= 90):
-		return [@ok, 1]
-	elseif ($ascii >= 97) and ($ascii <= 122):
-		return [@ok, 1]
-	end
-	return [@ok, 0]
-end
-
-; Digit Checker
-fun isDigit: @args char
-	set ascii: string.ascii $char
-	if ($ascii >= 48) and ($ascii <= 57):
-		return [@ok, 1]
-	end
-	return [@ok, 0]
-end
-
-; Character combiner
-fun combine: @args  map_list, start, finish
-	set output: ""
-	for &pos, $start, ($finish + 1), 1:
-		output: $output << $map_list{$pos}
-	end
-	return [@ok, $output]
-end
-
 ; Lexer
 fun lex: @args data
 	set tokens: []
-	set [start, current, line]: [0, 0, 1]
-	set data: string.split $data, ""
+	set current: 0
+	set line: 1
+	set dataLen: sizeof $data
 
-	while $current < (sizeof $data):
-		start: $current
-		set c: $data{$current}
+	while $current < $dataLen:
+		set start: $current
+		set c: substring $data, $current, 1
 		current: $current + 1
 
 		; Symbols
@@ -93,21 +88,25 @@ fun lex: @args data
 			push $tokens, (lexer.newToken $enum.tokEol, $c, $line)
 			line: $line + 1
 		elseif ($c == " ") or ($c == "\r") or ($c == "\t"):
-		  set __discard__: 0
+			set __discard__: 0
 		elseif $c == ";":
-			 while ($current < (sizeof $data)) and $data{$current} != "\n": current: $current + 1 end
+			while $current < $dataLen:
+				set sc: substring $data, $current, 1
+				if $sc == "\n": break end
+				current: $current + 1
+			end
 		elseif $c == "(": push $tokens, (lexer.newToken $enum.tokLParen, $c, $line)
 		elseif $c == ")": push $tokens, (lexer.newToken $enum.tokRParen, $c, $line)
 		elseif $c == "{": push $tokens, (lexer.newToken $enum.tokLBrace, $c, $line)
 		elseif $c == "}": push $tokens, (lexer.newToken $enum.tokRBrace, $c, $line)
-		elseif $c == "[": push $tokens, (lexer.newToken $enum.tokLBracket $c, $line)
-		elseif $c == "]": push $tokens, (lexer.newToken $enum.tokRBracket $c, $line)
+		elseif $c == "[": push $tokens, (lexer.newToken $enum.tokLBracket, $c, $line)
+		elseif $c == "]": push $tokens, (lexer.newToken $enum.tokRBracket, $c, $line)
 		elseif $c == ":":
-			if ($current < (sizeof $data)) and ($data{$current} == ":"):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == ":"):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokDoubleColon, "::", $line)
 			else:
-			 	push $tokens, (lexer.newToken $enum.tokColon, $c, $line)
+				push $tokens, (lexer.newToken $enum.tokColon, $c, $line)
 			end
 		elseif $c == ".": push $tokens, (lexer.newToken $enum.tokDot, $c, $line)
 		elseif $c == ",": push $tokens, (lexer.newToken $enum.tokComma, $c, $line)
@@ -121,8 +120,8 @@ fun lex: @args data
 
 		; Comparisons
 		; -, ->
-		elseif $c == "_":
-			if ($current < (sizeof $data)) and ($data{$current} == ">"):
+		elseif $c == "-":
+			if ($current < $dataLen) and ((substring $data, $current, 1) == ">"):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokArrow, "->", $line)
 			else:
@@ -131,10 +130,10 @@ fun lex: @args data
 
 		; <, <=, <<
 		elseif $c == "<":
-			if ($current < (sizeof $data)) and ($data{$current} == "="):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokLe, "<=", $line)
-			elseif ($current < (sizeof $data)) and ($data{$current} == "<"):
+			elseif ($current < $dataLen) and ((substring $data, $current, 1) == "<"):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokConcat, "<<", $line)
 			else:
@@ -143,10 +142,10 @@ fun lex: @args data
 
 		; >, >=, >>
 		elseif $c == ">":
-			if ($current < (sizeof $data)) and ($data{$current} == "="):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokGe, ">=", $line)
-			elseif ($current < (sizeof $data)) and ($data{$current} == ">"):
+			elseif ($current < $dataLen) and ((substring $data, $current, 1) == ">"):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokShr, ">>", $line)
 			else:
@@ -155,7 +154,7 @@ fun lex: @args data
 
 		; ==, ERROR
 		elseif $c == "=":
-			if ($current < (sizeof $data)) and ($data{$current} == "="):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokEqEq, "==", $line)
 			else:
@@ -164,7 +163,7 @@ fun lex: @args data
 
 		; !=, ERROR
 		elseif $c == "!":
-			if ($current < (sizeof $data)) and ($data{$current} == "="):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokNeq, "!=", $line)
 			else:
@@ -174,69 +173,81 @@ fun lex: @args data
 		; Macro Handling
 		elseif $c == "@":
 			set text: "@"
-			while ($current < (sizeof $data)) and (lexer.isAlphanumeric $data{$current}):
-				text: $text << $data{$current}
+			while $current < $dataLen:
+				set ch: substring $data, $current, 1
+				if (lexer.isAlphanumeric $ch) == 0: break end
+				text: $text << $ch
 				current: $current + 1
 			end
 
-			; Macros
 			if $text == "@args":
 				push $tokens, (lexer.newToken $enum.tokAtArgs, $text, $line)
 			elseif $text == "@namespace":
 				push $tokens, (lexer.newToken $enum.tokNamespace, $text, $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokMacroRef, (string.replace $text, "@", ""), $line)
+				set macroName: substring $text, 1, ((sizeof $text) - 1)
+				push $tokens, (lexer.newToken $enum.tokMacroRef, $macroName, $line)
 			end
 
 		; Strings
 		elseif $c == "\"":
 			set strVal: ""
-			while ($current < (sizeof $data)) and ($data{$current} != "\""):
-				if ($data{$current} == "\\") and ($current + 1 < (sizeof $data)):
-					strVal: $strVal << $data{$current}
+			while $current < $dataLen:
+				set ch: substring $data, $current, 1
+				if $ch == "\"": break end
+				if ($ch == "\\") and ($current + 1 < $dataLen):
+					strVal: $strVal << "\\"
 					current: $current + 1
-					strVal: $strVal << $data{$current}
+					set esc: substring $data, $current, 1
+					strVal: $strVal << $esc
 				else:
-					strVal: $strVal << $data{$current}
+					strVal: $strVal << $ch
 				end
 				current: $current + 1
 			end
-			if ($current < (sizeof $data)) and ($data{$current} == "\""):
+			if ($current < $dataLen) and ((substring $data, $current, 1) == "\""):
 				current: $current + 1
 			end
 			push $tokens, (lexer.newToken $enum.tokStringLit, $strVal, $line)
 		else:
 			if (lexer.isDigit $c):
-				while ($current < (sizeof $data)) and (lexer.isDigit $data{$current}):
+				while $current < $dataLen:
+					set ch: substring $data, $current, 1
+					if (lexer.isDigit $ch) == 0: break end
 					current: $current + 1
 				end
-				if ($current < (sizeof $data)) and ($data{$current} == "."):
+				if ($current < $dataLen) and ((substring $data, $current, 1) == "."):
 					set isFloat: 0
-					if ($current + 1 < (sizeof $data)) and (lexer.isDigit $data{$current + 1}):
+					if ($current + 1 < $dataLen) and (lexer.isDigit (substring $data, $current + 1, 1)):
 						isFloat: 1
 					end
 					if $isFloat:
 						current: $current + 1
-						while ($current < (sizeof $data)) and (lexer.isDigit $data{$current}):
+						while $current < $dataLen:
+							set ch: substring $data, $current, 1
+							if (lexer.isDigit $ch) == 0: break end
 							current: $current + 1
 						end
-						set decimal: lexer.combine $data, $start, $current
+						set decimal: substring $data, $start, ($current - $start)
 						push $tokens, (lexer.newToken $enum.tokFloatLit, $decimal, $line)
 					else:
-						set number: lexer.combine $data, $start, $current
+						set number: substring $data, $start, ($current - $start)
 						push $tokens, (lexer.newToken $enum.tokNumberLit, $number, $line)
 					end
 				else:
-					set number: lexer.combine $data, $start, $current
+					set number: substring $data, $start, ($current - $start)
 					push $tokens, (lexer.newToken $enum.tokNumberLit, $number, $line)
 				end
 			elseif (lexer.isAlphaAscii $c) or ($c == "_") or ($c == "#"):
-				while ($current < (sizeof $data)) and ((lexer.isAlphanumeric $data{$current}) or $data{$current} == "_"):
+				while $current < $dataLen:
+					set ch: substring $data, $current, 1
+					if ((lexer.isAlphanumeric $ch) == 0) and ($ch != "_"): break end
 					current: $current + 1
 				end
-				set text: lexer.combine $data, $start, $current
-				if (collection.hasKey $lexer.keywords, $text):
-					push $tokens, (lexer.newToken $lexer.keywords{$text}, $text, $line)
+				set text: substring $data, $start, ($current - $start)
+				set kwVal: $lexer.keywords{$text}
+				if $kwVal != 0:
+					push $tokens, (lexer.newToken $kwVal, $text, $line)
 				else:
 					push $tokens, (lexer.newToken $enum.tokIdentifier, $text, $line)
 				end

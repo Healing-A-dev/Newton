@@ -1,0 +1,1406 @@
+; Filename: codegen.nt
+; Description: Bytecode code generator for Newton compiler self-hosting
+using enum
+using errors
+
+fun incAddr: @args addr
+	set p0: string.ascii (substring $addr, 0, 1)
+	set p1: string.ascii (substring $addr, 1, 1)
+	if ($p0 == 122) and ($p1 == 122):
+		return [@ok, $addr]
+	end
+	p1: $p1 + 1
+	if $p1 == 58:
+		p1: 65
+	elseif $p1 == 91:
+		p1: 97
+	elseif $p1 == 123:
+		p0: $p0 + 1
+		p1: 48
+	end
+	if $p0 == 58:
+		p0: 65
+	elseif $p0 == 91:
+		p0: 97
+	end
+	set res: (string.char $p0) << (string.char $p1)
+	return [@ok, $res]
+end
+
+fun unescape: @args s
+	set result: ""
+	set sLen: sizeof $s
+	set i: 0
+	while $i < $sLen:
+		set ch: substring $s, $i, 1
+		if ($ch == "\\") and ($i + 1 < $sLen):
+			set nxt: substring $s, $i + 1, 1
+			if $nxt == "n": result: $result << "\n"
+			elseif $nxt == "t": result: $result << "\t"
+			elseif $nxt == "r": result: $result << "\r"
+			elseif $nxt == "\\": result: $result << "\\"
+			elseif $nxt == "\"": result: $result << "\""
+			elseif $nxt == "'": result: $result << "'"
+			elseif $nxt == "0": result: $result << "\0"
+			elseif $nxt == "x":
+				if $i + 3 < $sLen:
+					set h1: substring $s, $i + 2, 1
+					set h2: substring $s, $i + 3, 1
+					set a1: string.ascii $h1
+					set a2: string.ascii $h2
+					set v1: 0
+					set v2: 0
+					if ($a1 >= 48) and ($a1 <= 57): v1: $a1 - 48
+					elseif ($a1 >= 65) and ($a1 <= 70): v1: ($a1 - 65) + 10
+					elseif ($a1 >= 97) and ($a1 <= 102): v1: ($a1 - 97) + 10 end
+					if ($a2 >= 48) and ($a2 <= 57): v2: $a2 - 48
+					elseif ($a2 >= 65) and ($a2 <= 70): v2: ($a2 - 65) + 10
+					elseif ($a2 >= 97) and ($a2 <= 102): v2: ($a2 - 97) + 10 end
+					set byteVal: ($v1 * 16) + $v2
+					result: $result << (string.char $byteVal)
+					i: $i + 2
+				else:
+					result: $result << "x"
+				end
+			else:
+				result: $result << $ch << $nxt
+			end
+			i: $i + 2
+		else:
+			result: $result << $ch
+			i: $i + 1
+		end
+	end
+	return [@ok, $result]
+end
+
+fun toHexStr: @args s
+	set result: ""
+	set sLen: sizeof $s
+	set hexDigits: "0123456789ABCDEF"
+	for &i, 0, $sLen, 1:
+		set ch: substring $s, $i, 1
+		set b: string.ascii $ch
+		set d1: $b >> 4
+		set d2: $b % 16
+		set c1: substring $hexDigits, $d1, 1
+		set c2: substring $hexDigits, $d2, 1
+		result: $result << $c1 << $c2
+	end
+	return [@ok, $result]
+end
+
+fun newCompiler:
+	set c: (
+		"output":         [],
+		"locals":         (),
+		"globals":        (),
+		"localPtr":       "00",
+		"globalPtr":      "00",
+		"tempPtr":        "00",
+		"labelPtr":       0,
+		"inFunction":     0,
+		"stackOffset":    0,
+		"tempCounter":    0,
+		"stringCounter":  0,
+		"varTypes":       (),
+		"loopStack":      [],
+		"currentFuncName": "",
+		"currentFnArgs":  [],
+		"currentTcoLabel": "",
+		"functionRegistry": ()
+	)
+	return [@ok, $c]
+end
+
+fun emit: @args c, op, arg0, arg1, arg2
+	set a0: "00"
+	if (sizeof $arg0) > 0: a0: $arg0 end
+	set a1: "00"
+	if (sizeof $arg1) > 0: a1: $arg1 end
+	set a2: "00"
+	if (sizeof $arg2) > 0: a2: $arg2 end
+	push $c{"output"}, ($op << " " << $a0 << " " << $a1 << " " << $a2)
+	return [@ok, 1]
+end
+
+fun newLabel: @args c
+	set l: "L" << (string $c{"labelPtr"})
+	c{"labelPtr"}: $c{"labelPtr"} + 1
+	return [@ok, $l]
+end
+
+fun emitLabel: @args c, label
+	codegen.emit $c, "0J", ("[" << $label << "]"), "00", "00"
+	return [@ok, 1]
+end
+
+fun allocVar: @args c
+	if $c{"inFunction"}:
+		c{"stackOffset"}: $c{"stackOffset"} - 8
+		return [@ok, ("$" << (string $c{"stackOffset"}) << "(%rbp)")]
+	else:
+		set nextAddr: codegen.incAddr $c{"localPtr"}
+		c{"localPtr"}: $nextAddr
+		return [@ok, ("$" << $nextAddr)]
+	end
+end
+
+fun allocTemp: @args c
+	if $c{"inFunction"}:
+		c{"stackOffset"}: $c{"stackOffset"} - 8
+		return [@ok, ((string $c{"stackOffset"}) << "(%rbp)")]
+	else:
+		set nextAddr: codegen.incAddr $c{"tempPtr"}
+		c{"tempPtr"}: $nextAddr
+		return [@ok, ("%" << $nextAddr)]
+	end
+end
+
+fun ensureLocation: @args c, val
+	set firstCh: substring $val, 0, 1
+	if ($firstCh == "$") or ($firstCh == "@") or ($firstCh == "%") or ($firstCh == "["):
+		return [@ok, $val]
+	end
+	set vLen: sizeof $val
+	if $vLen >= 6:
+		if (substring $val, ($vLen - 6), 6) == "(%rbp)":
+			return [@ok, $val]
+		end
+	end
+	set tempLoc: codegen.allocTemp $c
+	set safeVal: $val
+	if $firstCh == "\"":
+		set unquoted: substring $val, 1, ($vLen - 2)
+		safeVal: "[" << $unquoted << "]"
+	else:
+		if $vLen > 2:
+			safeVal: "[" << $val << "]"
+		else:
+			safeVal: $val
+		end
+	end
+	codegen.emit $c, "0G", $tempLoc, $safeVal, "00"
+	return [@ok, $tempLoc]
+end
+
+fun registerAstFunctions: @args c, stmtsList
+	set nStmts: sizeof $stmtsList
+	for &i, 0, $nStmts, 1:
+		set s: $stmtsList{$i}
+		set k: $s{"kind"}
+		if $k == $enum.nkFunction:
+			set fReg: $c{"functionRegistry"}
+			fReg{$s{"fnName"}}: sizeof $s{"fnArgs"}
+		elseif $k == $enum.nkBlock:
+			codegen.registerAstFunctions $c, $s{"blockStmts"}
+		end
+	end
+	return [@ok, 1]
+end
+
+fun extractFunctions: @args c, stmtsList
+	set nStmts: sizeof $stmtsList
+	for &i, 0, $nStmts, 1:
+		set s: $stmtsList{$i}
+		set k: $s{"kind"}
+		if $k == $enum.nkFunction:
+			codegen.gen $c, $s
+		elseif $k == $enum.nkBlock:
+			codegen.extractFunctions $c, $s{"blockStmts"}
+		end
+	end
+	return [@ok, 1]
+end
+
+; Core Recursive Generator
+fun gen: @args c, node
+	if (typeof $node) != "map":
+		return [@ok, ""]
+	end
+	set kind: $node{"kind"}
+
+	; nkProgram
+	if $kind == $enum.nkProgram:
+		codegen.emit $c, "0H", "$00", "3843", "00"
+		codegen.emit $c, "0H", "@00", "3843", "00"
+		codegen.emit $c, "0H", "%00", "3843", "00"
+		codegen.emit $c, "0J", "[ENTRY]", "00", "00"
+
+		set mainLabel: codegen.newLabel $c
+		codegen.emit $c, "0B", ("[" << $mainLabel << "]"), "00", "00"
+
+		; PASS 0: Register Globals
+		set nStmts: sizeof $node{"stmts"}
+		for &i, 0, $nStmts, 1:
+			set stmt: $node{"stmts"}{$i}
+			if $stmt{"kind"} == $enum.nkGlobalDecl:
+				set gName: $stmt{"varName"}
+				if (typeof $c{"globals"}{$gName}) != "string":
+					set nextAddr: codegen.incAddr $c{"globalPtr"}
+					c{"globalPtr"}: $nextAddr
+					set addrStr: "@" << $nextAddr
+					set globs: $c{"globals"}
+					globs{$gName}: $addrStr
+					codegen.emit $c, "03", $addrStr, "0", "00"
+					set vType: "int"
+					if ($stmt{"varValue"}{"kind"} == $enum.nkLiteral) and ($stmt{"varValue"}{"isString"} == 1):
+						vType: "string"
+					end
+					set vTypes: $c{"varTypes"}
+					vTypes{$gName}: $vType
+				end
+			end
+		end
+
+		codegen.registerAstFunctions $c, $node{"stmts"}
+		codegen.extractFunctions $c, $node{"stmts"}
+
+		codegen.emitLabel $c, $mainLabel
+		codegen.emit $c, "1A", "%rbp", "00", "00"
+		codegen.emit $c, "0A", "%rsp", "%rbp", "00"
+		codegen.emit $c, "03", "%sp", "0", "00"
+
+		c{"inFunction"}: 1
+		c{"stackOffset"}: 0
+
+		set mainPrologueIdx: sizeof $c{"output"}
+		codegen.emit $c, "41", "_NULL", "00", "00"
+
+		for &i, 0, $nStmts, 1:
+			set stmt: $node{"stmts"}{$i}
+			if $stmt{"kind"} != $enum.nkFunction:
+				codegen.gen $c, $stmt
+			end
+		end
+
+		set mainStackNeeded: 0 - $c{"stackOffset"}
+		set mRem: $mainStackNeeded % 16
+		if $mRem > 0:
+			mainStackNeeded: $mainStackNeeded + (16 - $mRem)
+		end
+		if $mainStackNeeded == 0: mainStackNeeded: 16 end
+		set outList: $c{"output"}
+		outList{$mainPrologueIdx}: ("41 " << (string $mainStackNeeded) << " 00 00")
+
+		codegen.emit $c, "0A", "%rbp", "%rsp", "00"
+		codegen.emit $c, "40", "%rdi", "0", "00"
+		codegen.emit $c, "0L", "0", "00", "00"
+		codegen.emit $c, "0I", "$00", "00", "00"
+		codegen.emit $c, "0I", "@00", "00", "00"
+		codegen.emit $c, "0I", "%00", "00", "00"
+		return [@ok, ""]
+
+	; nkVarDecl
+	elseif $kind == $enum.nkVarDecl:
+		set vType: "int"
+		if ($node{"varValue"}{"kind"} == $enum.nkLiteral) and ($node{"varValue"}{"isString"} == 1):
+			vType: "string"
+		elseif $node{"varValue"}{"kind"} == $enum.nkVarRef:
+			if (typeof $c{"varTypes"}{$node{"varValue"}{"refName"}}) == "string":
+				vType: $c{"varTypes"}{$node{"varValue"}{"refName"}}
+			end
+		end
+		set vTypes: $c{"varTypes"}
+		vTypes{$node{"varName"}}: $vType
+
+		set valLoc: codegen.gen $c, $node{"varValue"}
+		set addrStr: ""
+		if (typeof $c{"locals"}{$node{"varName"}}) == "string":
+			addrStr: $c{"locals"}{$node{"varName"}}
+			codegen.emit $c, "0G", $addrStr, $valLoc, "00"
+		else:
+			addrStr: codegen.allocVar $c
+			set locs: $c{"locals"}
+			locs{$node{"varName"}}: $addrStr
+			codegen.emit $c, "03", $addrStr, "0", "00"
+		end
+		codegen.emit $c, "0G", $addrStr, $valLoc, "00"
+		return [@ok, $addrStr]
+
+	; nkGlobalDecl
+	elseif $kind == $enum.nkGlobalDecl:
+		set valLoc: codegen.gen $c, $node{"varValue"}
+		set addrStr: ""
+		set vType: "int"
+		if ($node{"varValue"}{"kind"} == $enum.nkLiteral) and ($node{"varValue"}{"isString"} == 1):
+			vType: "string"
+		end
+		set vTypesG: $c{"varTypes"}
+		vTypesG{$node{"varName"}}: $vType
+
+		if (typeof $c{"globals"}{$node{"varName"}}) == "string":
+			addrStr: $c{"globals"}{$node{"varName"}}
+			codegen.emit $c, "0G", $addrStr, $valLoc, "00"
+		else:
+			set nextAddr: codegen.incAddr $c{"globalPtr"}
+			c{"globalPtr"}: $nextAddr
+			addrStr: "@" << $nextAddr
+			set globs: $c{"globals"}
+			globs{$node{"varName"}}: $addrStr
+			codegen.emit $c, "03", $addrStr, "0", "00"
+			codegen.emit $c, "0G", $addrStr, $valLoc, "00"
+		end
+		return [@ok, $addrStr]
+
+	; nkVarRef
+	elseif $kind == $enum.nkVarRef:
+		set refName: $node{"refName"}
+		if (typeof $c{"locals"}{$refName}) == "string":
+			return [@ok, $c{"locals"}{$refName}]
+		elseif (typeof $c{"globals"}{$refName}) == "string":
+			return [@ok, $c{"globals"}{$refName}]
+		else:
+			return [@ok, ("$F_" << $refName)]
+		end
+
+	; nkLiteral
+	elseif $kind == $enum.nkLiteral:
+		if $node{"isString"} == 1:
+			set realStr: codegen.unescape $node{"strVal"}
+			set strLen: sizeof $realStr
+			if $strLen > 120:
+				set chunks: []
+				set idx: 0
+				while $idx < $strLen:
+					set chunkSize: 120
+					if ($strLen - $idx) < 120:
+						chunkSize: $strLen - $idx
+					end
+					push $chunks, (substring $realStr, $idx, $chunkSize)
+					idx: $idx + $chunkSize
+				end
+				set currentLoc: ""
+				set nChunks: sizeof $chunks
+				for &ci, 0, $nChunks, 1:
+					set chunk: $chunks{$ci}
+					set label: "str_" << (string $c{"stringCounter"})
+					c{"stringCounter"}: $c{"stringCounter"} + 1
+					set hexStr: codegen.toHexStr $chunk
+					set safeStr: "[" << $hexStr << "]"
+					codegen.emit $c, "1E", $label, $safeStr, "00"
+					set chunkLoc: "$" << $label
+					if $ci == 0:
+						currentLoc: $chunkLoc
+					else:
+						set dest: codegen.allocTemp $c
+						codegen.emit $c, "03", $dest, "0", "00"
+						codegen.emit $c, "2D", $dest, $currentLoc, $chunkLoc
+						currentLoc: $dest
+					end
+				end
+				return [@ok, $currentLoc]
+			else:
+				set label: "str_" << (string $c{"stringCounter"})
+				c{"stringCounter"}: $c{"stringCounter"} + 1
+				set hexStr: codegen.toHexStr $realStr
+				set safeStr: "[" << $hexStr << "]"
+				codegen.emit $c, "1E", $label, $safeStr, "00"
+				return [@ok, ("$" << $label)]
+			end
+		else:
+			set iVal: int $node{"strVal"}
+			set taggedVal: ($iVal * 2) + 1
+			return [@ok, ("$" << (string $taggedVal))]
+		end
+
+	; nkFloatLit
+	elseif $kind == $enum.nkFloatLit:
+		set lbl: "FLT_" << (string (codegen.newLabel $c))
+		codegen.emit $c, "1E", $lbl, ("[" << $node{"strVal"} << "]"), "00"
+		set dest: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", ("$" << $lbl), "00"
+		codegen.emit $c, "1B", "runtime_box_float_str", "0", "00"
+		codegen.emit $c, "40", $dest, "%rax", "00"
+		return [@ok, $dest]
+
+	; nkBinaryOp
+	elseif $kind == $enum.nkBinaryOp:
+		set op: $node{"op"}
+		set leftLoc: codegen.gen $c, $node{"left"}
+		set rightLoc: codegen.gen $c, $node{"right"}
+
+		if ($op == "+") or ($op == "-") or ($op == "*") or ($op == "/") or ($op == "%") or ($op == ">>") or ($op == "shl"):
+			set res: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $leftLoc, "00"
+			codegen.emit $c, "40", "%rsi", $rightLoc, "00"
+			if $op == "+": codegen.emit $c, "1B", "runtime_add", "0", "00"
+			elseif $op == "-": codegen.emit $c, "1B", "runtime_sub", "0", "00"
+			elseif $op == "*": codegen.emit $c, "1B", "runtime_mul", "0", "00"
+			elseif $op == "/": codegen.emit $c, "1B", "runtime_div", "0", "00"
+			elseif $op == "%": codegen.emit $c, "1B", "runtime_mod", "0", "00"
+			elseif $op == ">>": codegen.emit $c, "1B", "runtime_shr", "0", "00"
+			elseif $op == "shl": codegen.emit $c, "1B", "runtime_shl", "0", "00" end
+			codegen.emit $c, "40", $res, "%rax", "00"
+			return [@ok, $res]
+		end
+
+		if ($op == "<") or ($op == ">") or ($op == "==") or ($op == "!=") or ($op == "<=") or ($op == ">=") or ($op == "and") or ($op == "or") or ($op == "not") or ($op == "^"):
+			set res: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $leftLoc, "00"
+			codegen.emit $c, "40", "%rsi", $rightLoc, "00"
+			if $op == "<": codegen.emit $c, "1B", "runtime_lt", "0", "00"
+			elseif $op == ">": codegen.emit $c, "1B", "runtime_gt", "0", "00"
+			elseif $op == "==": codegen.emit $c, "1B", "runtime_eq", "0", "00"
+			elseif $op == "!=": codegen.emit $c, "1B", "runtime_neq", "0", "00"
+			elseif $op == "<=": codegen.emit $c, "1B", "runtime_le", "0", "00"
+			elseif $op == ">=": codegen.emit $c, "1B", "runtime_ge", "0", "00"
+			elseif $op == "and": codegen.emit $c, "1B", "runtime_and", "0", "00"
+			elseif $op == "or": codegen.emit $c, "1B", "runtime_or", "0", "00"
+			elseif $op == "not": codegen.emit $c, "1B", "runtime_not", "0", "00"
+			elseif $op == "^": codegen.emit $c, "1B", "runtime_xor", "0", "00" end
+			codegen.emit $c, "40", $res, "%rax", "00"
+			return [@ok, $res]
+		end
+		return [@ok, ""]
+
+	; nkInfix
+	elseif $kind == $enum.nkInfix:
+		if $node{"op"} == "<<":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "03", $dest, "0", "00"
+			set leftLoc: codegen.gen $c, $node{"left"}
+			set rightLoc: codegen.gen $c, $node{"right"}
+			codegen.emit $c, "2D", $dest, $leftLoc, $rightLoc
+			return [@ok, $dest]
+		end
+		return [@ok, ""]
+
+	; nkIf
+	elseif $kind == $enum.nkIf:
+		set elseLabel: codegen.newLabel $c
+		set endLabel: codegen.newLabel $c
+		set condRaw: codegen.gen $c, $node{"condition"}
+		set condLoc: codegen.ensureLocation $c, $condRaw
+		codegen.emit $c, "0P", $condLoc, $elseLabel, "00"
+
+		if $node{"thenBranch"}{"kind"} == $enum.nkBlock:
+			set nStmts: sizeof $node{"thenBranch"}{"blockStmts"}
+			for &i, 0, $nStmts, 1:
+				codegen.gen $c, $node{"thenBranch"}{"blockStmts"}{$i}
+			end
+		else:
+			codegen.gen $c, $node{"thenBranch"}
+		end
+
+		codegen.emit $c, "0B", ("[" << $endLabel << "]"), "00", "00"
+		codegen.emit $c, "0J", ("[" << $elseLabel << "]"), "00", "00"
+
+		if (typeof $node{"elseBranch"}) == "map":
+			if $node{"elseBranch"}{"kind"} == $enum.nkBlock:
+				set nStmts: sizeof $node{"elseBranch"}{"blockStmts"}
+				for &i, 0, $nStmts, 1:
+					codegen.gen $c, $node{"elseBranch"}{"blockStmts"}{$i}
+				end
+			else:
+				codegen.gen $c, $node{"elseBranch"}
+			end
+		end
+
+		codegen.emit $c, "0J", ("[" << $endLabel << "]"), "00", "00"
+		return [@ok, ""]
+
+	; nkLoop
+	elseif $kind == $enum.nkLoop:
+		if $node{"loopType"} == "for":
+			set iterName: $node{"loopArgs"}{0}{"strVal"}
+			set startNode: $node{"loopArgs"}{1}
+			set endNode: $node{"loopArgs"}{2}
+			set stepNode: $node{"loopArgs"}{3}
+
+			set iterLoc: codegen.allocVar $c
+			set loopLocs: $c{"locals"}
+			loopLocs{$iterName}: $iterLoc
+
+			set startLoc: codegen.gen $c, $startNode
+			codegen.emit $c, "0A", (codegen.ensureLocation $c, $startLoc), $iterLoc, "00"
+
+			set loopStart: codegen.newLabel $c
+			set loopEnd: codegen.newLabel $c
+
+			codegen.emit $c, "0J", $loopStart, "00", "00"
+
+			set endRaw: codegen.gen $c, $endNode
+			set endLoc: codegen.ensureLocation $c, $endRaw
+			set cmpRes: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $iterLoc, "00"
+			codegen.emit $c, "40", "%rsi", $endLoc, "00"
+			codegen.emit $c, "1B", "runtime_lt", "0", "00"
+			codegen.emit $c, "40", $cmpRes, "%rax", "00"
+			codegen.emit $c, "0P", $cmpRes, $loopEnd, "00"
+
+			push $c{"loopStack"}, $loopEnd
+
+			if $node{"loopBody"}{"kind"} == $enum.nkBlock:
+				set nStmts: sizeof $node{"loopBody"}{"blockStmts"}
+				for &i, 0, $nStmts, 1:
+					codegen.gen $c, $node{"loopBody"}{"blockStmts"}{$i}
+				end
+			else:
+				codegen.gen $c, $node{"loopBody"}
+			end
+
+			pop $c{"loopStack"}
+
+			set stepRaw: codegen.gen $c, $stepNode
+			set stepLoc: codegen.ensureLocation $c, $stepRaw
+			codegen.emit $c, "40", "%rdi", $iterLoc, "00"
+			codegen.emit $c, "40", "%rsi", $stepLoc, "00"
+			codegen.emit $c, "1B", "runtime_add", "0", "00"
+			codegen.emit $c, "40", $iterLoc, "%rax", "00"
+
+			codegen.emit $c, "0B", $loopStart, "00", "00"
+			codegen.emit $c, "0J", $loopEnd, "00", "00"
+			return [@ok, ""]
+		end
+		return [@ok, ""]
+
+	; nkWhile
+	elseif $kind == $enum.nkWhile:
+		set loopStart: codegen.newLabel $c
+		set loopEnd: codegen.newLabel $c
+		codegen.emit $c, "0J", $loopStart, "00", "00"
+		set condRaw: codegen.gen $c, $node{"whileCondition"}
+		set condLoc: codegen.ensureLocation $c, $condRaw
+		codegen.emit $c, "0P", $condLoc, $loopEnd, "00"
+
+		push $c{"loopStack"}, $loopEnd
+
+		if $node{"whileBody"}{"kind"} == $enum.nkBlock:
+			set nStmts: sizeof $node{"whileBody"}{"blockStmts"}
+			for &i, 0, $nStmts, 1:
+				codegen.gen $c, $node{"whileBody"}{"blockStmts"}{$i}
+			end
+		else:
+			codegen.gen $c, $node{"whileBody"}
+		end
+
+		pop $c{"loopStack"}
+
+		codegen.emit $c, "0B", $loopStart, "00", "00"
+		codegen.emit $c, "0J", $loopEnd, "00", "00"
+		return [@ok, ""]
+
+	; nkFunction
+	elseif $kind == $enum.nkFunction:
+		if $c{"inFunction"}: return [@ok, ""] end
+		set skipLabel: codegen.newLabel $c
+		codegen.emit $c, "0B", ("[" << $skipLabel << "]"), "00", "00"
+
+		set fnLabel: "F_" << $node{"fnName"}
+		if $node{"fnExpo"}:
+			codegen.emit $c, "1H", ("[" << $fnLabel << "]"), "00", "00"
+		end
+		codegen.emit $c, "0J", ("[" << $fnLabel << "]"), "00", "00"
+
+		set oldLocals: $c{"locals"}
+		set oldStack: $c{"stackOffset"}
+		c{"inFunction"}: 1
+		c{"stackOffset"}: 0
+		c{"currentFuncName"}: $node{"fnName"}
+		c{"currentFnArgs"}: $node{"fnArgs"}
+		c{"currentTcoLabel"}: codegen.newLabel $c
+		c{"locals"}: ()
+
+		set fnPrologueIdx: sizeof $c{"output"}
+		codegen.emit $c, "41", "_NULL", "00", "00"
+
+		set nArgs: sizeof $node{"fnArgs"}
+		for &i, 0, $nArgs, 1:
+			set argName: $node{"fnArgs"}{$i}
+			set reg: codegen.allocVar $c
+			set fnLocs: $c{"locals"}
+			fnLocs{$argName}: $reg
+			codegen.emit $c, "03", $reg, "0", "00"
+			codegen.emit $c, "1D", $reg, (string $i), "00"
+		end
+
+		codegen.emitLabel $c, $c{"currentTcoLabel"}
+		codegen.gen $c, $node{"fnBody"}
+
+		if $node{"fnName"} == "main":
+			codegen.emit $c, "40", "%rdi", "0", "00"
+		end
+
+		set outLen: sizeof $c{"output"}
+		if $outLen > 0:
+			set lastInstr: $c{"output"}{$outLen - 1}
+			if (substring $lastInstr, 0, 2) != "1C":
+				codegen.emit $c, "1C", "00", "00", "00"
+			end
+		else:
+			codegen.emit $c, "1C", "00", "00", "00"
+		end
+
+		set fnStackNeeded: 0 - $c{"stackOffset"}
+		set fRem: $fnStackNeeded % 16
+		if $fRem > 0:
+			fnStackNeeded: $fnStackNeeded + (16 - $fRem)
+		end
+		if $fnStackNeeded == 0: fnStackNeeded: 16 end
+		set fnOutList: $c{"output"}
+		fnOutList{$fnPrologueIdx}: ("41 " << (string $fnStackNeeded) << " 00 00")
+
+		c{"locals"}: $oldLocals
+		c{"stackOffset"}: $oldStack
+		c{"inFunction"}: 0
+		codegen.emit $c, "0J", ("[" << $skipLabel << "]"), "00", "00"
+		return [@ok, ""]
+
+	; nkReturn
+	elseif $kind == $enum.nkReturn:
+		if (typeof $node{"returnVal"}) == "map":
+			; TCO check
+			if ($node{"returnVal"}{"kind"} == $enum.nkCall) or ($node{"returnVal"}{"kind"} == $enum.nkCommand):
+				if $node{"returnVal"}{"callName"} == $c{"currentFuncName"}:
+					set callArgs: $node{"returnVal"}{"callArgs"}
+					set nArgs: sizeof $callArgs
+					set evaledArgs: []
+					for &i, 0, $nArgs, 1:
+						set val: codegen.gen $c, $callArgs{$i}
+						set tmp: codegen.allocTemp $c
+						codegen.emit $c, "0G", $tmp, $val, "00"
+						push $evaledArgs, $tmp
+					end
+					set nFnArgs: sizeof $c{"currentFnArgs"}
+					for &i, 0, $nArgs, 1:
+						if $i < $nFnArgs:
+							set argName: $c{"currentFnArgs"}{$i}
+							if (typeof $c{"locals"}{$argName}) == "string":
+								set argReg: $c{"locals"}{$argName}
+								codegen.emit $c, "0G", $argReg, $evaledArgs{$i}, "00"
+							end
+						end
+					end
+					codegen.emit $c, "0B", ("[" << $c{"currentTcoLabel"} << "]"), "00", "00"
+					return [@ok, ""]
+				end
+			end
+			set retRaw: codegen.gen $c, $node{"returnVal"}
+			if $retRaw != "[sra]":
+				codegen.emit $c, "0G", "[sra]", $retRaw, "00"
+			end
+			codegen.emit $c, "1C", "00", "00", "00"
+		else:
+			codegen.emit $c, "1C", "00", "00", "00"
+		end
+		return [@ok, ""]
+
+	; nkForeachFile
+	elseif $kind == $enum.nkForeachFile:
+		set targetLoc: codegen.gen $c, $node{"fileLoopTarget"}
+		set fpReg: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", $targetLoc, "00"
+		codegen.emit $c, "1B", "newton_fopen", "0", "00"
+		codegen.emit $c, "40", $fpReg, "%rax", "00"
+
+		set startLabel: codegen.newLabel $c
+		set endLabel: codegen.newLabel $c
+		codegen.emitLabel $c, $startLabel
+
+		set lineReg: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", $fpReg, "00"
+		codegen.emit $c, "1B", "newton_getline", "0", "00"
+		codegen.emit $c, "40", $lineReg, "%rax", "00"
+
+		codegen.emit $c, "0P", $lineReg, $endLabel, "00"
+
+		set varReg: codegen.allocVar $c
+		set fileLocs: $c{"locals"}
+		fileLocs{$node{"fileLoopVar"}}: $varReg
+		codegen.emit $c, "03", $varReg, "0", "00"
+		codegen.emit $c, "0G", $varReg, $lineReg, "00"
+
+		codegen.gen $c, $node{"fileLoopBody"}
+		codegen.emit $c, "0B", ("[" << $startLabel << "]"), "00", "00"
+
+		codegen.emitLabel $c, $endLabel
+		codegen.emit $c, "40", "%rdi", $fpReg, "00"
+		codegen.emit $c, "1B", "newton_fclose", "0", "00"
+		return [@ok, ""]
+
+	; nkForeachMap
+	elseif $kind == $enum.nkForeachMap:
+		set targetLoc: codegen.gen $c, $node{"mapLoopTarget"}
+		set lenReg: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", $targetLoc, "00"
+		codegen.emit $c, "1B", "newton_sizeof", "0", "00"
+		codegen.emit $c, "40", $lenReg, "%rax", "00"
+
+		set idxReg: codegen.allocTemp $c
+		codegen.emit $c, "03", $idxReg, "0", "00"
+		codegen.emit $c, "0G", $idxReg, "$1", "00"
+
+		set keyVar: ""
+		set mapLocs: $c{"locals"}
+		if (sizeof $node{"mapLoopKey"}) > 0:
+			keyVar: codegen.allocVar $c
+			mapLocs{$node{"mapLoopKey"}}: $keyVar
+			codegen.emit $c, "03", $keyVar, "0", "00"
+		end
+
+		set valVar: codegen.allocVar $c
+		mapLocs{$node{"mapLoopVal"}}: $valVar
+		codegen.emit $c, "03", $valVar, "0", "00"
+
+		set startLabel: codegen.newLabel $c
+		set endLabel: codegen.newLabel $c
+		codegen.emitLabel $c, $startLabel
+
+		set cmpReg: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", $idxReg, "00"
+		codegen.emit $c, "40", "%rsi", $lenReg, "00"
+		codegen.emit $c, "1B", "runtime_lt", "0", "00"
+		codegen.emit $c, "40", $cmpReg, "%rax", "00"
+		codegen.emit $c, "0P", $cmpReg, $endLabel, "00"
+
+		if (sizeof $node{"mapLoopKey"}) > 0:
+			codegen.emit $c, "40", "%rdi", $targetLoc, "00"
+			codegen.emit $c, "40", "%rsi", $idxReg, "00"
+			codegen.emit $c, "1B", "collection_get_key", "0", "00"
+			codegen.emit $c, "40", $keyVar, "%rax", "00"
+		end
+
+		codegen.emit $c, "40", "%rdi", $targetLoc, "00"
+		codegen.emit $c, "40", "%rsi", $idxReg, "00"
+		codegen.emit $c, "1B", "collection_get", "0", "00"
+		codegen.emit $c, "40", $valVar, "%rax", "00"
+
+		codegen.gen $c, $node{"mapLoopBody"}
+
+		codegen.emit $c, "40", "%rdi", $idxReg, "00"
+		codegen.emit $c, "1B", "newton_inc", "0", "00"
+		codegen.emit $c, "40", $idxReg, "%rax", "00"
+
+		codegen.emit $c, "0B", ("[" << $startLabel << "]"), "00", "00"
+		codegen.emitLabel $c, $endLabel
+		return [@ok, ""]
+
+	; nkBlock
+	elseif $kind == $enum.nkBlock:
+		set nStmts: sizeof $node{"blockStmts"}
+		for &i, 0, $nStmts, 1:
+			codegen.gen $c, $node{"blockStmts"}{$i}
+		end
+		return [@ok, ""]
+
+	; nkAssignment
+	elseif $kind == $enum.nkAssignment:
+		set valLoc: codegen.gen $c, $node{"varValue"}
+		set addrStr: ""
+		if (typeof $c{"locals"}{$node{"varName"}}) == "string":
+			addrStr: $c{"locals"}{$node{"varName"}}
+		elseif (typeof $c{"globals"}{$node{"varName"}}) == "string":
+			addrStr: $c{"globals"}{$node{"varName"}}
+		else:
+			errors.err "Reassignment to undefined variable '" << $node{"varName"} << "'", 0, "", ""
+			return [@ok, ""]
+		end
+		codegen.emit $c, "0G", $addrStr, $valLoc, "00"
+		return [@ok, ""]
+
+	; nkInput
+	elseif $kind == $enum.nkInput:
+		set dest: codegen.allocTemp $c
+		codegen.emit $c, "01", $dest, "00", "00"
+		return [@ok, $dest]
+
+	; nkMapLit
+	elseif $kind == $enum.nkMapLit:
+		set mapLoc: codegen.allocTemp $c
+		codegen.emit $c, "03", $mapLoc, "0", "00"
+		codegen.emit $c, "20", $mapLoc, "00", "00"
+
+		if $node{"isList"} == 1:
+			set valLocs: []
+			set nVals: sizeof $node{"mapValues"}
+			for &i, 0, $nVals, 1:
+				push $valLocs, (codegen.gen $c, $node{"mapValues"}{$i})
+			end
+			set idx: $nVals - 1
+			while $idx >= 0:
+				set taggedVal: ($idx * 2) + 1
+				set indexLoc: "$" << (string $taggedVal)
+				codegen.emit $c, "21", $mapLoc, $indexLoc, $valLocs{$idx}
+				idx: $idx - 1
+			end
+		else:
+			set keyLocs: []
+			set valLocs: []
+			set nKeys: sizeof $node{"mapKeys"}
+			for &i, 0, $nKeys, 1:
+				push $keyLocs, (codegen.gen $c, $node{"mapKeys"}{$i})
+				push $valLocs, (codegen.gen $c, $node{"mapValues"}{$i})
+			end
+			set idx: $nKeys - 1
+			while $idx >= 0:
+				codegen.emit $c, "21", $mapLoc, $keyLocs{$idx}, $valLocs{$idx}
+				idx: $idx - 1
+			end
+		end
+		return [@ok, $mapLoc]
+
+	; nkMapGet
+	elseif $kind == $enum.nkMapGet:
+		set mapLoc: codegen.gen $c, $node{"targetMap"}
+		set keyLoc: codegen.gen $c, $node{"targetKey"}
+		set dest: codegen.allocTemp $c
+		codegen.emit $c, "40", "%rdi", $mapLoc, "00"
+		codegen.emit $c, "40", "%rsi", $keyLoc, "00"
+		codegen.emit $c, "1B", "collection_get", "0", "00"
+		codegen.emit $c, "40", $dest, "%rax", "00"
+		return [@ok, $dest]
+
+	; nkDestructDecl
+	elseif $kind == $enum.nkDestructDecl:
+		set valLoc: codegen.gen $c, $node{"destructVal"}
+		set destMap: codegen.allocTemp $c
+		codegen.emit $c, "0G", $destMap, $valLoc, "00"
+
+		set nNames: sizeof $node{"destructNames"}
+		for &i, 0, $nNames, 1:
+			set name: $node{"destructNames"}{$i}
+			set reg: codegen.allocVar $c
+			set dLocs: $c{"locals"}
+			dLocs{$name}: $reg
+			codegen.emit $c, "03", $reg, "0", "00"
+
+			set tmp: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $destMap, "00"
+			set taggedIdx: ($i * 2) + 1
+			codegen.emit $c, "40", "%rsi", ("$" << (string $taggedIdx)), "00"
+			codegen.emit $c, "1B", "collection_get", "0", "00"
+			codegen.emit $c, "40", $tmp, "%rax", "00"
+			codegen.emit $c, "0G", $reg, $tmp, "00"
+		end
+		return [@ok, ""]
+
+	; nkMatch
+	elseif $kind == $enum.nkMatch:
+		set targetLoc: codegen.gen $c, $node{"matchTarget"}
+		set endLabel: codegen.newLabel $c
+
+		set nBranches: sizeof $node{"matchBranches"}
+		for &i, 0, $nBranches, 1:
+			set branch: $node{"matchBranches"}{$i}
+			set nextLabel: codegen.newLabel $c
+			set condLoc: codegen.gen $c, $branch{"branchCond"}
+			set tmp: codegen.allocTemp $c
+
+			codegen.emit $c, "40", "%rdi", $targetLoc, "00"
+			codegen.emit $c, "40", "%rsi", $condLoc, "00"
+			codegen.emit $c, "1B", "runtime_eq", "0", "00"
+			codegen.emit $c, "40", $tmp, "%rax", "00"
+			codegen.emit $c, "0P", $tmp, $nextLabel, "00"
+
+			codegen.gen $c, $branch{"branchBody"}
+			codegen.emit $c, "0B", ("[" << $endLabel << "]"), "00", "00"
+			codegen.emitLabel $c, $nextLabel
+		end
+
+		codegen.emitLabel $c, $endLabel
+		return [@ok, ""]
+
+	; nkBracket
+	elseif $kind == $enum.nkBracket:
+		set arrLoc: codegen.allocTemp $c
+		set count: sizeof $node{"children"}
+		set sizeBytes: ($count * 8) + 64
+		codegen.emit $c, "40", "%rdi", ("$" << (string $sizeBytes)), "00"
+		codegen.emit $c, "1B", "new_array", "0", "00"
+		codegen.emit $c, "40", $arrLoc, "%rax", "00"
+
+		for &i, 0, $count, 1:
+			set valLoc: codegen.gen $c, $node{"children"}{$i}
+			set taggedIdx: ($i * 2) + 1
+			codegen.emit $c, "40", "%rdi", $arrLoc, "00"
+			codegen.emit $c, "40", "%rsi", ("$" << (string $taggedIdx)), "00"
+			codegen.emit $c, "40", "%rdx", $valLoc, "00"
+			codegen.emit $c, "1B", "collection_set", "0", "00"
+		end
+		return [@ok, $arrLoc]
+
+	; nkCommand / nkCall
+	elseif ($kind == $enum.nkCommand) or ($kind == $enum.nkCall):
+		set callName: $node{"callName"}
+		set args: $node{"callArgs"}
+
+		if $callName == "stdout":
+			set nArgs: sizeof $args
+			for &i, 0, $nArgs, 1:
+				set argNode: $args{$i}
+				set loc: codegen.gen $c, $argNode
+				set isString: 0
+				if ($argNode{"kind"} == $enum.nkLiteral) and ($argNode{"isString"} == 1):
+					isString: 1
+				elseif $argNode{"kind"} == $enum.nkVarRef:
+					set vType: $c{"varTypes"}{$argNode{"refName"}}
+					if $vType == "string": isString: 1 end
+				end
+				if $isString == 1:
+					codegen.emit $c, "1F", $loc, "00", "00"
+				else:
+					codegen.emit $c, "02", $loc, "1", "00"
+				end
+			end
+			return [@ok, ""]
+		end
+
+		if $callName == "break":
+			set lsLen: sizeof $c{"loopStack"}
+			if $lsLen > 0:
+				codegen.emit $c, "0B", $c{"loopStack"}{$lsLen - 1}, "00", "00"
+			end
+			return [@ok, ""]
+		end
+
+		if $callName == "__sys_collection_delete":
+			set colLoc: codegen.gen $c, $args{0}
+			set keyLoc: codegen.gen $c, $args{1}
+			codegen.emit $c, "40", "%rdi", $colLoc, "00"
+			codegen.emit $c, "40", "%rsi", $keyLoc, "00"
+			codegen.emit $c, "1B", "collection_delete", "0", "00"
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__proc_sleep_ms":
+			set msLoc: codegen.gen $c, $args{0}
+			codegen.emit $c, "40", "%rdi", $msLoc, "00"
+			codegen.emit $c, "1B", "sys_sleep_ms", "0", "00"
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sizeof":
+			set mapArg: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $mapArg, "00"
+			codegen.emit $c, "1B", "newton_sizeof", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__math_random":
+			set valLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $valLoc, "00"
+			codegen.emit $c, "1B", "runtime_random", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "string":
+			set valLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "0O", $dest, $valLoc, "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "int":
+			set valLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $valLoc, "00"
+			codegen.emit $c, "1B", "newton_to_int", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "float":
+			set valLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $valLoc, "00"
+			codegen.emit $c, "1B", "runtime_to_float", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "proc_fork":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "sys_fork", "00", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_access":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "sys_access", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_mkdir":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "sys_mkdir", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__string_ord":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "string_ord", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__string_char":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "string_char", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__math_xor":
+			set leftLoc: codegen.gen $c, $args{0}
+			set rightLoc: codegen.gen $c, $args{1}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $leftLoc, "00"
+			codegen.emit $c, "40", "%rsi", $rightLoc, "00"
+			codegen.emit $c, "1B", "runtime_xor", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_unlink":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "sys_unlink", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "proc_pid":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "sys_getpid", "00", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "proc_wait":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "sys_wait", "00", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "proc_wait_nohang":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "sys_wait_nohang", "00", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "proc_sleep":
+			set sec: codegen.gen $c, $args{0}
+			codegen.emit $c, "40", "%rdi", $sec, "00"
+			codegen.emit $c, "1B", "sys_sleep", "00", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "proc_exit":
+			set code: codegen.gen $c, $args{0}
+			codegen.emit $c, "40", "%rdi", $code, "00"
+			codegen.emit $c, "1B", "exit_program", "00", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "set_index":
+			set listLoc: codegen.gen $c, $args{0}
+			set idxLoc: codegen.gen $c, $args{1}
+			set valLoc: codegen.gen $c, $args{2}
+			codegen.emit $c, "40", "%rdi", $listLoc, "00"
+			codegen.emit $c, "40", "%rsi", $idxLoc, "00"
+			codegen.emit $c, "40", "%rdx", $valLoc, "00"
+			codegen.emit $c, "1B", "collection_set", "0", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "typeof":
+			set valLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "03", $dest, "0", "00"
+			codegen.emit $c, "0T", $dest, $valLoc, "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_open":
+			set dest: codegen.allocTemp $c
+			set path: codegen.gen $c, $args{0}
+			set flags: codegen.gen $c, $args{1}
+			codegen.emit $c, "03", $dest, "0", "00"
+			codegen.emit $c, "28", $dest, $path, $flags
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_free":
+			set varLoc: codegen.gen $c, $args{0}
+			codegen.emit $c, "0I", $varLoc, "00", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "sys_write":
+			set fd: codegen.gen $c, $args{0}
+			set data: codegen.gen $c, $args{1}
+			codegen.emit $c, "29", $fd, $data, "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "sys_read":
+			set dest: codegen.allocTemp $c
+			set fd: codegen.gen $c, $args{0}
+			set len: codegen.gen $c, $args{1}
+			codegen.emit $c, "03", $dest, "0", "00"
+			codegen.emit $c, "2A", $dest, $fd, $len
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_close":
+			set fd: codegen.gen $c, $args{0}
+			codegen.emit $c, "2B", $fd, "00", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "sys_exec":
+			set cmdLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $cmdLoc, "00"
+			codegen.emit $c, "1B", "sys_exec", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, ""]
+		end
+
+		if $callName == "sys_argv":
+			set indexLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $indexLoc, "00"
+			codegen.emit $c, "1B", "sys_argv", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_argc":
+			set blank: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $blank, "00"
+			codegen.emit $c, "1B", "sys_argc", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__sys_getenv":
+			set keyLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $keyLoc, "00"
+			codegen.emit $c, "1B", "sys_getenv", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "__sys_time_now":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "sys_time_now", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "substring":
+			set strLoc: codegen.gen $c, $args{0}
+			set startLoc: codegen.gen $c, $args{1}
+			set lenLoc: codegen.gen $c, $args{2}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $strLoc, "00"
+			codegen.emit $c, "40", "%rsi", $startLoc, "00"
+			codegen.emit $c, "40", "%rdx", $lenLoc, "00"
+			codegen.emit $c, "1B", "string_substring", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "read_file":
+			set pathLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $pathLoc, "00"
+			codegen.emit $c, "1B", "read_file", "0", $dest
+			return [@ok, $dest]
+		end
+
+		if $callName == "__file_write_bin":
+			set fileLoc: codegen.gen $c, $args{0}
+			set writeLoc: codegen.gen $c, $args{1}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fileLoc, "00"
+			codegen.emit $c, "40", "%rsi", $writeLoc, "00"
+			codegen.emit $c, "1B", "sys_write_bytes", "0", $dest
+			return [@ok, $dest]
+		end
+
+		if $callName == "del_opcode":
+			set mapLoc: codegen.gen $c, $args{0}
+			set keyLoc: codegen.gen $c, $args{1}
+			codegen.emit $c, "04", $mapLoc, $keyLoc, "00"
+			return [@ok, ""]
+		end
+
+		; Networking
+		if $callName == "net_create":
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1B", "runtime_net_create", "0", $dest
+			return [@ok, $dest]
+		end
+
+		if $callName == "net_bind":
+			set fd: codegen.gen $c, $args{0}
+			set port: codegen.gen $c, $args{1}
+			set dummy: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "40", "%rsi", $port, "00"
+			codegen.emit $c, "1B", "runtime_net_bind", "0", $dummy
+			return [@ok, $fd]
+		end
+
+		if $callName == "net_listen":
+			set fd: codegen.gen $c, $args{0}
+			set dummy: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "1B", "runtime_net_listen", "0", $dummy
+			return [@ok, $fd]
+		end
+
+		if $callName == "net_accept":
+			set serverFd: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $serverFd, "00"
+			codegen.emit $c, "1B", "runtime_net_accept", "0", $dest
+			return [@ok, $dest]
+		end
+
+		if $callName == "net_connect":
+			set fd: codegen.gen $c, $args{0}
+			set port: codegen.gen $c, $args{1}
+			set ip: codegen.gen $c, $args{2}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "40", "%rsi", $port, "00"
+			codegen.emit $c, "40", "%rdx", $ip, "00"
+			codegen.emit $c, "1B", "runtime_net_connect", "0", $dest
+			return [@ok, $dest]
+		end
+
+		if $callName == "net_send":
+			set fd: codegen.gen $c, $args{0}
+			set data: codegen.gen $c, $args{1}
+			set dummy: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "40", "%rsi", $data, "00"
+			codegen.emit $c, "1B", "runtime_net_send", "0", $dummy
+			return [@ok, $fd]
+		end
+
+		if $callName == "net_close":
+			set fd: codegen.gen $c, $args{0}
+			set dummy: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "1B", "runtime_net_close", "0", $dummy
+			return [@ok, $fd]
+		end
+
+		if $callName == "net_recv":
+			set fd: codegen.gen $c, $args{0}
+			set size: codegen.gen $c, $args{1}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fd, "00"
+			codegen.emit $c, "40", "%rsi", $size, "00"
+			codegen.emit $c, "1B", "runtime_net_recv", "0", $dest
+			return [@ok, $dest]
+		end
+
+		; C FFI: __c_
+		if ((sizeof $callName) > 4) and ((substring $callName, 0, 4) == "__c_"):
+			set cSymbol: substring $callName, 4, ((sizeof $callName) - 4)
+			set regs: ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
+			set nArgs: sizeof $args
+			set maxArgs: 6
+			if $nArgs < 6: maxArgs: $nArgs end
+			set argLocs: []
+			for &i, 0, $maxArgs, 1:
+				push $argLocs, (codegen.gen $c, $args{$i})
+			end
+			for &i, 0, $maxArgs, 1:
+				codegen.emit $c, "40", $regs{$i}, $argLocs{$i}, "00"
+			end
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "1I", $cSymbol, "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		; General User Function Call
+		set funcName: $callName
+		set nArgs: sizeof $args
+		set idx: $nArgs - 1
+		while $idx >= 0:
+			set val: codegen.gen $c, $args{$idx}
+			set tmp: codegen.allocTemp $c
+			codegen.emit $c, "0G", $tmp, $val, "00"
+			codegen.emit $c, "1A", $tmp, "00", "00"
+			idx: $idx - 1
+		end
+
+		set dest: codegen.allocTemp $c
+		codegen.emit $c, "1B", ("[F_" << $funcName << "]"), (string $nArgs), $dest
+		if $node{"autoUnwrap"} == 0:
+			set taggedLine: ($node{"line"} * 2) + 1
+			codegen.emit $c, "40", "%rdi", $dest, "00"
+			codegen.emit $c, "40", "%rsi", ("$" << (string $taggedLine)), "00"
+			codegen.emit $c, "1B", "runtime_auto_unwrap", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+		end
+		return [@ok, $dest]
+
+	; nkCallDynamic
+	elseif $kind == $enum.nkCallDynamic:
+		set funcPtrLoc: codegen.gen $c, $node{"callTarget"}
+		set args: $node{"callArgs"}
+		set nArgs: sizeof $args
+		set idx: $nArgs - 1
+		while $idx >= 0:
+			set val: codegen.gen $c, $args{$idx}
+			set tmp: codegen.allocTemp $c
+			codegen.emit $c, "0G", $tmp, $val, "00"
+			codegen.emit $c, "1A", $tmp, "00", "00"
+			idx: $idx - 1
+		end
+		set dest: codegen.allocTemp $c
+		codegen.emit $c, "1G", $funcPtrLoc, (string $nArgs), $dest
+		if $node{"autoUnwrap"} == 0:
+			set taggedLine: ($node{"line"} * 2) + 1
+			codegen.emit $c, "40", "%rdi", $dest, "00"
+			codegen.emit $c, "40", "%rsi", ("$" << (string $taggedLine)), "00"
+			codegen.emit $c, "1B", "runtime_auto_unwrap", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+		end
+		return [@ok, $dest]
+
+	else:
+		return [@ok, ""]
+	end
+
+	return [@ok, ""]
+end
+
+fun compile: @args astRoot
+	set c: codegen.newCompiler
+	codegen.gen $c, $astRoot
+	return [@ok, $c{"output"}]
+end

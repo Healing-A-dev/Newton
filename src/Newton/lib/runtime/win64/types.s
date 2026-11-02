@@ -268,7 +268,10 @@ collection_get_key:
 .global new_array
 new_array:
     push %rbp; mov %rsp, %rbp
-    mov $2048, %rdi
+    cmp $262144, %rdi
+    jge .Larr_size_ok
+    mov $262144, %rdi
+.Larr_size_ok:
     call _malloc
 
     movq $3, 0(%rax)
