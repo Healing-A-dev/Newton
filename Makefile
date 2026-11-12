@@ -28,21 +28,20 @@ CORE_SRCS = src/Newton/core/ast.nim     \
 			src/Newton/core/parser.nim  \
 			src/Newton/core/lsp.nim
 
-STD_SRC = src/Newton/lib/Std/File.nt       \
-		  src/Newton/lib/Std/Collection.nt \
-		  src/Newton/lib/Std/IO.nt         \
-		  src/Newton/lib/Std/Json.nt       \
-		  src/Newton/lib/Std/Math.nt       \
-		  src/Newton/lib/Std/Process.nt    \
-		  src/Newton/lib/Std/String.nt     \
-		  src/Newton/lib/Std/System.nt     \
-		  src/Newton/lib/Std/Terminal.nt   \
-		  src/Newton/lib/Std/Web.nt        \
-		  src/Newton/lib/Std/Result.nt     \
-		  src/Newton/lib/Std/Test.nt       \
-		  src/Newton/lib/Std/Path.nt       \
-		  src/Newton/lib/Std/OS.nt         \
-		  src/Newton/lib/Std/Crypt.nt
+STD_SRC = src/Newton/lib/std/file.nt       \
+		  src/Newton/lib/std/collection.nt \
+		  src/Newton/lib/std/io.nt         \
+		  src/Newton/lib/std/json.nt       \
+		  src/Newton/lib/std/math.nt       \
+		  src/Newton/lib/std/process.nt    \
+		  src/Newton/lib/std/string.nt     \
+		  src/Newton/lib/std/system.nt     \
+		  src/Newton/lib/std/terminal.nt   \
+		  src/Newton/lib/std/web.nt        \
+		  src/Newton/lib/std/test.nt       \
+		  src/Newton/lib/std/path.nt       \
+		  src/Newton/lib/std/os.nt         \
+		  src/Newton/lib/std/crypt.nt
 
 
 RUNTIME_OBJS_LINUX = $(RUNTIME_SRCS_LINUX:.s=.o)
@@ -94,9 +93,11 @@ src/Newton/lib/libnewton.a: $(RUNTIME_OBJS_WINDOWS)
 %.w64.o: %.s
 	$(WAS) -o $@ $<
 
-# Installation
-install: src/Newton/newton
+bootstrap: src/Newton/newton
+	./src/Newton/newton src/Newton/bootstrap/main.nt -o src/Newton/newton -v
 
+# Installation
+install:
 	@# Removing Old Newton File
 	rm -f $(BIN_DIR)/newton
 	rm -f $(BIN_DIR)/nnpm

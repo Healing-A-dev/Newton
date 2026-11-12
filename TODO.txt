@@ -7,6 +7,8 @@
 + FIXED -> Collection.ToMap function incorrectly converting to maps (converts backwords) ha -> ('a', 'h')
 + FIXED -> Collection.ToList incorrectly converting maps to list (does not reverse order)
 + FIXED -> 'int' keyword no longer working on floats
++ Fix   -> linking with C not working with bootstraped newton executable (throws no errors, but fails to execute compiled file with a 'cannot execute: required file not found' error.)
++ Fix   -> generating windows executables fail due to missing 'sys_time_now'
 
 --- SECTION: ADD/ADDED FEATURES ---
 + ADDED -> Recursive collection data calling for the print functions (printing a map/list within a map/list without storing the inner list)
@@ -17,9 +19,10 @@ Add   -> Standard Library Documentation***
 Add   -> Block code to 'match' statement.
   * EX:
     match $name:
-      "Sara" ->
+      "Sara":
           code...
           more_code...
+      end
       "Bob" -> do thing
       default -> Default case
     end
