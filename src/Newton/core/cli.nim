@@ -207,10 +207,10 @@ proc parseArgs*(ARGS: seq[string]): STATES =
               continue
 
           if currentSection == "build":
-              echo "\e[96m[Build-Step]\e[0m ", line
+              echo "\e[96m#build-step\e[0m ", line
               let exitCode = execCmd(line)
               if exitCode != 0:
-                  echo "\e[91m[Newton Build Error]\e[0m Command failed: ", line
+                  echo "\e[91m#build-error\e[0m Command failed: ", line
                   quit(1)
               continue
 

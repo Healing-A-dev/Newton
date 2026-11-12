@@ -26,6 +26,7 @@ end
 fun execute: @args cmd
 	set commands: ""
 	set cmd_type: typeof $cmd
+	set status: 0
 
 	if $cmd_type == "map":
 
@@ -53,10 +54,10 @@ fun execute: @args cmd
 
   set pid: proc_fork 0
   if $pid == 0:
-      sys_exec $commands
+      status: sys_exec $commands
       proc_exit 1
   else:
       proc_wait 0
   end
-  return ["ok", 1]
+  return ["ok", $status]
 end

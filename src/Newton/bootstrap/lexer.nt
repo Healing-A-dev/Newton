@@ -27,45 +27,35 @@ set keywords*: (
 
 ; Token Creator
 fun newToken: @args kind, lexeme, line
-	set Token: ("kind": $kind, "lexeme": $lexeme, "line": $line)
-	return [@ok, $Token]
+	return [@ok, [$kind, $lexeme, $line]]
 end
 
 ; Digit Checker
-fun isDigit: @args char
-	if (typeof $char) != "string": return [@ok, 0] end
-	if (sizeof $char) == 0: return [@ok, 0] end
-	set ascii: string.ascii $char
-	if ($ascii >= 48) and ($ascii <= 57):
+fun isDigit: @args b
+	if ($b >= 48) and ($b <= 57):
 		return [@ok, 1]
 	end
 	return [@ok, 0]
 end
 
 ; Alpha Checkers
-fun isAlphaAscii: @args char
-	if (typeof $char) != "string": return [@ok, 0] end
-	if (sizeof $char) == 0: return [@ok, 0] end
-	set ascii: string.ascii $char
-	if ($ascii >= 65) and ($ascii <= 90):
+fun isAlphaAscii: @args b
+	if ($b >= 65) and ($b <= 90):
 		return [@ok, 1]
-	elseif ($ascii >= 97) and ($ascii <= 122):
+	elseif ($b >= 97) and ($b <= 122):
 		return [@ok, 1]
 	end
 	return [@ok, 0]
 end
 
-fun isAlphanumeric: @args char
-	if (typeof $char) != "string": return [@ok, 0] end
-	if (sizeof $char) == 0: return [@ok, 0] end
-	set ascii: string.ascii $char
-	if ($ascii >= 48) and ($ascii <= 57):
+fun isAlphanumeric: @args b
+	if ($b >= 48) and ($b <= 57):
 		return [@ok, 1]
-	elseif ($ascii >= 65) and ($ascii <= 90):
+	elseif ($b >= 65) and ($b <= 90):
 		return [@ok, 1]
-	elseif ($ascii >= 97) and ($ascii <= 122):
+	elseif ($b >= 97) and ($b <= 122):
 		return [@ok, 1]
-	elseif $ascii == 95:
+	elseif $b == 95:
 		return [@ok, 1]
 	end
 	return [@ok, 0]
@@ -80,81 +70,83 @@ fun lex: @args data
 
 	while $current < $dataLen:
 		set start: $current
-		set c: substring $data, $current, 1
+		set b: $data{$current}
 		current: $current + 1
 
-		; Symbols
-		if $c == "\n":
-			push $tokens, (lexer.newToken $enum.tokEol, $c, $line)
+		; Whitespace
+		if $b == 10:
+			push $tokens, (lexer.newToken $enum.tokEol, "\n", $line)
 			line: $line + 1
-		elseif ($c == " ") or ($c == "\r") or ($c == "\t"):
+		elseif ($b == 32) or ($b == 13) or ($b == 9):
 			set __discard__: 0
-		elseif $c == ";":
+		; Comments
+		elseif $b == 59:
 			while $current < $dataLen:
-				set sc: substring $data, $current, 1
-				if $sc == "\n": break end
+				set sc: $data{$current}
+				if $sc == 10: break end
 				current: $current + 1
 			end
-		elseif $c == "(": push $tokens, (lexer.newToken $enum.tokLParen, $c, $line)
-		elseif $c == ")": push $tokens, (lexer.newToken $enum.tokRParen, $c, $line)
-		elseif $c == "{": push $tokens, (lexer.newToken $enum.tokLBrace, $c, $line)
-		elseif $c == "}": push $tokens, (lexer.newToken $enum.tokRBrace, $c, $line)
-		elseif $c == "[": push $tokens, (lexer.newToken $enum.tokLBracket, $c, $line)
-		elseif $c == "]": push $tokens, (lexer.newToken $enum.tokRBracket, $c, $line)
-		elseif $c == ":":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == ":"):
+		; Single-character delimiters
+		elseif $b == 40: push $tokens, (lexer.newToken $enum.tokLParen, "(", $line)
+		elseif $b == 41: push $tokens, (lexer.newToken $enum.tokRParen, ")", $line)
+		elseif $b == 123: push $tokens, (lexer.newToken $enum.tokLBrace, "{", $line)
+		elseif $b == 125: push $tokens, (lexer.newToken $enum.tokRBrace, "}", $line)
+		elseif $b == 91: push $tokens, (lexer.newToken $enum.tokLBracket, "[", $line)
+		elseif $b == 93: push $tokens, (lexer.newToken $enum.tokRBracket, "]", $line)
+		elseif $b == 58:
+			if ($current < $dataLen) and ($data{$current} == 58):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokDoubleColon, "::", $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokColon, $c, $line)
+				push $tokens, (lexer.newToken $enum.tokColon, ":", $line)
 			end
-		elseif $c == ".": push $tokens, (lexer.newToken $enum.tokDot, $c, $line)
-		elseif $c == ",": push $tokens, (lexer.newToken $enum.tokComma, $c, $line)
-		elseif $c == "$": push $tokens, (lexer.newToken $enum.tokDollar, $c, $line)
-		elseif $c == "&": push $tokens, (lexer.newToken $enum.tokAmpersand, $c, $line)
-		elseif $c == "+": push $tokens, (lexer.newToken $enum.tokPlus, $c, $line)
-		elseif $c == "*": push $tokens, (lexer.newToken $enum.tokStar, $c, $line)
-		elseif $c == "/": push $tokens, (lexer.newToken $enum.tokSlash, $c, $line)
-		elseif $c == "%": push $tokens, (lexer.newToken $enum.tokMod, $c, $line)
-		elseif $c == "^": push $tokens, (lexer.newToken $enum.tokBitXor, $c, $line)
+		elseif $b == 46: push $tokens, (lexer.newToken $enum.tokDot, ".", $line)
+		elseif $b == 44: push $tokens, (lexer.newToken $enum.tokComma, ",", $line)
+		elseif $b == 36: push $tokens, (lexer.newToken $enum.tokDollar, "$", $line)
+		elseif $b == 38: push $tokens, (lexer.newToken $enum.tokAmpersand, "&", $line)
+		elseif $b == 43: push $tokens, (lexer.newToken $enum.tokPlus, "+", $line)
+		elseif $b == 42: push $tokens, (lexer.newToken $enum.tokStar, "*", $line)
+		elseif $b == 47: push $tokens, (lexer.newToken $enum.tokSlash, "/", $line)
+		elseif $b == 37: push $tokens, (lexer.newToken $enum.tokMod, "%", $line)
+		elseif $b == 94: push $tokens, (lexer.newToken $enum.tokBitXor, "^", $line)
 
 		; Comparisons
 		; -, ->
-		elseif $c == "-":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == ">"):
+		elseif $b == 45:
+			if ($current < $dataLen) and ($data{$current} == 62):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokArrow, "->", $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokMinus, $c, $line)
+				push $tokens, (lexer.newToken $enum.tokMinus, "-", $line)
 			end
 
 		; <, <=, <<
-		elseif $c == "<":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
+		elseif $b == 60:
+			if ($current < $dataLen) and ($data{$current} == 61):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokLe, "<=", $line)
-			elseif ($current < $dataLen) and ((substring $data, $current, 1) == "<"):
+			elseif ($current < $dataLen) and ($data{$current} == 60):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokConcat, "<<", $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokLt, $c, $line)
+				push $tokens, (lexer.newToken $enum.tokLt, "<", $line)
 			end
 
 		; >, >=, >>
-		elseif $c == ">":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
+		elseif $b == 62:
+			if ($current < $dataLen) and ($data{$current} == 61):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokGe, ">=", $line)
-			elseif ($current < $dataLen) and ((substring $data, $current, 1) == ">"):
+			elseif ($current < $dataLen) and ($data{$current} == 62):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokShr, ">>", $line)
 			else:
-				push $tokens, (lexer.newToken $enum.tokGt, $c, $line)
+				push $tokens, (lexer.newToken $enum.tokGt, ">", $line)
 			end
 
 		; ==, ERROR
-		elseif $c == "=":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
+		elseif $b == 61:
+			if ($current < $dataLen) and ($data{$current} == 61):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokEqEq, "==", $line)
 			else:
@@ -162,8 +154,8 @@ fun lex: @args data
 			end
 
 		; !=, ERROR
-		elseif $c == "!":
-			if ($current < $dataLen) and ((substring $data, $current, 1) == "="):
+		elseif $b == 33:
+			if ($current < $dataLen) and ($data{$current} == 61):
 				current: $current + 1
 				push $tokens, (lexer.newToken $enum.tokNeq, "!=", $line)
 			else:
@@ -171,14 +163,13 @@ fun lex: @args data
 			end
 
 		; Macro Handling
-		elseif $c == "@":
-			set text: "@"
+		elseif $b == 64:
 			while $current < $dataLen:
-				set ch: substring $data, $current, 1
-				if (lexer.isAlphanumeric $ch) == 0: break end
-				text: $text << $ch
+				set mb: $data{$current}
+				if (lexer.isAlphanumeric $mb) == 0: break end
 				current: $current + 1
 			end
+			set text: substring $data, $start, ($current - $start)
 
 			if $text == "@args":
 				push $tokens, (lexer.newToken $enum.tokAtArgs, $text, $line)
@@ -190,42 +181,42 @@ fun lex: @args data
 			end
 
 		; Strings
-		elseif $c == "\"":
-			set strVal: ""
+		elseif $b == 34:
+			set strStart: $current
 			while $current < $dataLen:
-				set ch: substring $data, $current, 1
-				if $ch == "\"": break end
-				if ($ch == "\\") and ($current + 1 < $dataLen):
-					strVal: $strVal << "\\"
-					current: $current + 1
-					set esc: substring $data, $current, 1
-					strVal: $strVal << $esc
+				set sb: $data{$current}
+				if $sb == 34:
+					break
+				elseif ($sb == 92) and ($current + 1 < $dataLen):
+					current: $current + 2
 				else:
-					strVal: $strVal << $ch
+					current: $current + 1
 				end
-				current: $current + 1
 			end
-			if ($current < $dataLen) and ((substring $data, $current, 1) == "\""):
+			set strVal: substring $data, $strStart, ($current - $strStart)
+			if ($current < $dataLen) and ($data{$current} == 34):
 				current: $current + 1
 			end
 			push $tokens, (lexer.newToken $enum.tokStringLit, $strVal, $line)
+
+		; Numbers and Identifiers
 		else:
-			if (lexer.isDigit $c):
+			if (lexer.isDigit $b):
 				while $current < $dataLen:
-					set ch: substring $data, $current, 1
-					if (lexer.isDigit $ch) == 0: break end
+					set db: $data{$current}
+					if (lexer.isDigit $db) == 0: break end
 					current: $current + 1
 				end
-				if ($current < $dataLen) and ((substring $data, $current, 1) == "."):
+				if ($current < $dataLen) and ($data{$current} == 46):
 					set isFloat: 0
-					if ($current + 1 < $dataLen) and (lexer.isDigit (substring $data, $current + 1, 1)):
+					if ($current + 1 < $dataLen) and (lexer.isDigit ($data{$current + 1})):
 						isFloat: 1
 					end
 					if $isFloat:
 						current: $current + 1
 						while $current < $dataLen:
-							set ch: substring $data, $current, 1
-							if (lexer.isDigit $ch) == 0: break end
+							set fdb: $data{$current}
+							if (lexer.isDigit $fdb) == 0: break end
 							current: $current + 1
 						end
 						set decimal: substring $data, $start, ($current - $start)
@@ -238,10 +229,10 @@ fun lex: @args data
 					set number: substring $data, $start, ($current - $start)
 					push $tokens, (lexer.newToken $enum.tokNumberLit, $number, $line)
 				end
-			elseif (lexer.isAlphaAscii $c) or ($c == "_") or ($c == "#"):
+			elseif (lexer.isAlphaAscii $b) or ($b == 95) or ($b == 35):
 				while $current < $dataLen:
-					set ch: substring $data, $current, 1
-					if ((lexer.isAlphanumeric $ch) == 0) and ($ch != "_"): break end
+					set ab: $data{$current}
+					if ((lexer.isAlphanumeric $ab) == 0) and ($ab != 95): break end
 					current: $current + 1
 				end
 				set text: substring $data, $start, ($current - $start)
@@ -252,7 +243,7 @@ fun lex: @args data
 					push $tokens, (lexer.newToken $enum.tokIdentifier, $text, $line)
 				end
 			else:
-				errors.err "Unexpected character: '" << $c << "'", $line, "", ""
+				errors.err "Unexpected character code: " << (string $b), $line, "", ""
 			end
 		end
 	end

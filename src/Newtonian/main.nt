@@ -1,0 +1,66 @@
+set NEWTONPROJ_PATH*: (os.getenv "PWD") << ".Newtonproj.toml"
+set NpfManifet*: (
+    name: "",
+    version: "",
+    entrypoint: "",
+    packages: ()
+)
+
+fun parseNpf:
+    set manifest: $NpfManifest
+    if not (fileExists  $NEWTONPROJ_PATH):
+        @println "\x1b[1;31m[NNPM Error]\x1b[0m No '.Newtonproj.toml' file found in current directory."
+        @quit 1
+    end
+
+    set [current_section, line_num]: ["", 0]
+    set newtonproj_details: (string.split (readfile $NEWTONPROJ_PATH), "\n")
+    while $line_num < (sizeof $newtonproj_details):
+        set line: string.stripWhitespace $newtonproj_details{$line_num}
+        if $line == "" or (string.startsWith $line, "#"):
+            line_num: $line_num + 1
+            line: string.stripWhitespace $newtonproj_details{$line_num}
+        end
+
+        if (string.startsWith $line, "[") and (string.endsWith $line, "]"):
+            current_section: string.lower (string.sub $line, 1, (sizeof $line) - 1)
+            line_num: $line_num + 1
+            line: string.stripWhitespace $newtonproj_details{$line_num}
+        end
+
+        set parts: string.split $line, "="
+        if (sizeof $parts) == 2:
+            set [key, val]: [(string.stripWhitespace $parts{0}), (string.replace (string.stripWhitespace $parts{1}), "\"", "")]
+            if $current_section == "project":
+                match $key:
+                    "name" -> manifest{"name"}: $val
+                    "version" -> manifest{"version"}: $val
+                    "entrypoint" -> manifest{"entrypoint"}: $val
+                end
+            elseif $current_section == "packages":
+                manifest{"packages"}{$key}: $val
+            end
+        end
+        line_num: $line_num + 1
+    end
+    return $manifest
+end
+
+fun addPackage: @args name, url, is_local
+    if not (fileExists  $NEWTONPROJ_PATH):
+        @println "\x1b[1;31m[NNPM Error]\x1b[0m No '.Newtonproj.toml' file found in current directory."
+        @quit 1
+    end
+
+    set file_lines: string.split (readfile $NEWTONPROJ_PATH), "\n"
+    set [in_pkg_sections, pkgs_section_index, pkg_exists]: [false, -1, false]
+
+    set [current_section, line_num]: ["", 0]
+    while $line_num < (sizeof $file_lines):
+        set stripped: string.stripWhitespace $file_lines{$line_num}
+        current_section: string.sub $stripped, 1, (sizeof $stripped) - 2
+
+        line_num: $line_num + 1
+    end
+
+end

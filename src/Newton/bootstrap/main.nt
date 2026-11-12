@@ -1,61 +1,133 @@
+using std::path
 using errors
 using enum
 using ast
+using cli
 using lexer
 using parser
 using codegen
 using serializer
 
-fun main:
-	set argc: sys_argc 0
-	set inputFile: "/home/healing/Documents/Projects/Languages/nim/Newton/src/Newton/bootstrap/test.nt"
-	set outputFile: "test"
+set errno*: 0
+set HOME*: os.getenv "HOME"
+set PWD*: os.getenv "PWD"
+set SCRIPT_PATH*: $HOME << "/.newton/bin/newton@core__script.component"
+set NEWTON_LSP*: $HOME << "/.newton/bin/newton-lsp"
 
-	set numArgs: $argc - 1
-	set idx: 0
-	while $idx < $numArgs:
-		set arg: sys_argv $idx
-		if $arg == "build":
-			idx: $idx + 1
-		elseif $arg == "-o":
-			idx: $idx + 1
-			if $idx < $numArgs:
-				outputFile: sys_argv $idx
-				idx: $idx + 1
+fun getNewtonLibPath:
+	set local_lib: $PWD << "/src/Newton/lib/libnewton.o"
+	if (fileExists $local_lib):
+		return $local_lib
+	end
+	return $HOME << "/.newton/lib/libnewton.o"
+end
+
+fun getNewtonWinLibPath:
+	set local_lib: $PWD << "/src/Newton/lib/libnewton.a"
+	if (fileExists $local_lib):
+		return $local_lib
+	end
+	return $HOME << "/.newton/lib/libnewton.a"
+end
+
+fun getGvmDirPath:
+	set local_gvm: $PWD << "/toolchains/gvm"
+	if (fileExists $local_gvm):
+		return $local_gvm
+	end
+	return $HOME << "/.newton/toolchains/gvm"
+end
+
+set NEWTON_LIB_PATH*: getNewtonLibPath
+set NEWTON_WIN_LIB_PATH*: getNewtonWinLibPath
+set GVM_DIR_PATH*: getGvmDirPath
+
+fun stripFileExtension: @args filename
+	set filename: $filename
+	if (typeof $filename) == "int":
+		filename: ""
+	end
+	set file_name: path.basename $filename
+	set file_extension: path.extension $filename
+	set stripped_name: string.replace $file_name, $file_extension, ""
+	return [@ok, $stripped_name]
+end
+
+fun compile: @args input_file, output_file, e
+	set input_file: $input_file
+	if $input_file == 0: input_file: "" end
+	set update_argv: "Std_Base_newton_update_argv \"" << $input_file << "\"\n"
+	if (string.endsWith $input_file, ".nts") or $e{"isScript"}:
+		@quit (os.execute $SCRIPT_PATH << " " << $input_file << " " << (collection.join $argv, " "))
+	end
+
+	errors.currentCompilingFile: $input_file
+	if $e{"noStdlib"}:
+		update_argv: ""
+	elseif (string.startsWith $input_file, "__@nout"):
+		update_argv: "argc: (sizeof $argv)\n"
+	end
+
+	set source: readfile $input_file
+	set tokens: lexer.lex $source
+	set p: parser.newParser $tokens
+	set ast_root: parser.parseProgram $p
+
+	if not $e{"noStdlib"}:
+		parser.injectPrelude $ast_root
+	end
+
+	set bytecode: codegen.compile $ast_root
+	if $errors.errCount > 0:
+		@println "Compilation failed with {} errors", $errors.errCount
+		@quit 1
+	end
+	serializer.serializeToBinary $output_file << ".gvt", $bytecode
+end
+
+fun main:
+	cli.parseArgs $argv
+	set data: $cli.STATES
+
+	if $data{"State"} == "lsp":
+		os.execute $NEWTON_LSP
+		@quit
+	end
+
+	if $data{"Output"} == "":
+		data{"Output"}: stripFileExtension $data{"Input"}
+	end
+
+	; Compile file to GVM bytecode
+	compile $data{"Input"}, $data{"Output"}, $data
+
+	; Compile GVM bytecode via GravityVM
+	if $data{"Backend"} != "-b:gravity":
+		if $data{"State"} != "run" and (sizeof $data{"RunArguments"}) > 0 and not (string.startsWith $data{"Input"}, "__@nout"):
+			@println $data{"RunArguments"}
+			@println "\x1b[1;31mError:\x1b[0m Arguemnts can only be passed with the 'newton run' command or the '-r, --run' flag."
+			@quit 1
+		end
+		if (string.sub $data{"TargetOS"}, 3, (sizeof $data{"TargetOS"}) - 3) != (os.host) and $data{"TargetOS"} != (os.host):
+			set platform: string.sub $data{"TargetOS"}, 3, (sizeof $data{"TargetOS"}) - 3
+			if $platform == "win64":
+				errno: os.execute $GVM_DIR_PATH << "/gvm " << $data{"State"} << " -i:" << $data{"Output"} << ".gvt -o:" << $data{"Output"} << " " << $data{"Intermidiates"} << " " << $data{"Backend"} << " " << $data{"Fallback"} << " -l:" << $NEWTON_WIN_LIB_PATH << " " << (collection.join $data{"LinkerFiles"}, " ") << " " << (collection.join $data{"RunArguments"}, " ") << " " << $data{"Verbose"} << " " << $data{"TargetOS"} << " " << $data{"ObjectOutput"}
+			elseif $platform == "darwin":
+				@println "TODO: IMPLEMENT DARWIN (MACOS) SUPPORT"
+			else:
+				errors.err "Unsupported platform <\x1b[1;31m" << $platform << "\x1b[0m>", 0, "", "Supported platforms: linux, win64, darwin"
 			end
 		else:
-			inputFile: $arg
-			idx: $idx + 1
+			errno: os.execute $GVM_DIR_PATH << "/gvm " << $data{"State"} << " -i:" << $data{"Output"} << ".gvt -o:" << $data{"Output"} << " " << $data{"Intermidiates"} << " " << $data{"Backend"} << " " << $data{"Fallback"} << " -l:" << $NEWTON_LIB_PATH << " " << (collection.join $data{"LinkerFiles"}, " ") << " " << (collection.join $data{"RunArguments"}, " ") << " " << $data{"Verbose"} << " " << $data{"ObjectOutput"}
+		end
+	else:
+		@println "Genreated bytecode file <\x1b[96m" << $data{"Output"} << ".gvt\x1b[0m>"
+	end
+
+	if $data{"Intermidiates"} == "":
+		if (fileExists $data{"Output"} << ".gvt") and $data{"Backend"} != "-b:gravity":
+			errno: $errno + (os.execute "rm " << $data{"Output"} << ".gvt")
 		end
 	end
-
-	errors.currentCompilingFile: $inputFile
-	set source: readfile $inputFile
-	@println "Read source (" << $inputFile << "): " << (string (sizeof $source)) << " bytes"
-
-	set tokens: lexer.lex $source
-	@println "Lexed tokens: " << (string (sizeof $tokens))
-
-	set p: parser.newParser $tokens
-	set astRoot: parser.parseProgram $p
-	parser.injectPrelude $astRoot
-	@println "Parsed AST successfully"
-
-	set bytecode: codegen.compile $astRoot
-	@println "Compiled bytecode: " << (string (sizeof $bytecode)) << " instructions"
-
-	set gvtFile: $outputFile << ".gvt"
-	serializer.serializeToBinary $gvtFile, $bytecode
-	@println "Serialized GVT to: " << $gvtFile
-
-	set gvmCmd: "" << (os.getenv "HOME") << "/.newton/toolchains/gvm/gvm build -i:" << $gvtFile << " -o:" << $outputFile << " -l:~/.newton/lib/libnewton.o"
-	@println "Invoking: " << $gvmCmd
-	set pid: proc_fork 0
-	if $pid == 0:
-		sys_exec $gvmCmd
-		proc_exit 1
-	else:
-		proc_wait 0
-	end
-	@println "\x1b[92mBuild Complete:\x1b[0m " << $outputFile
+	@quit $errno
 end

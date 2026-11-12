@@ -1,11 +1,14 @@
+using std::os
+
 fun main:
     set i: 0
     io.println "Starting Memory Stress Test..."
 
-    while $i < 500000:
+    while $i < 5000000:
         set temp: "Stress Test Allocation " << " - Placeholder"
         i: $i + 1
     end
 
-    io.println "Success! 500,000 allocations handled without crashing."
+    io.println "Success! 5,000,000 allocations handled without crashing."
+	os.execute "sleep 5"
 end

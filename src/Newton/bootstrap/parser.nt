@@ -24,12 +24,12 @@ end
 
 fun peekKind: @args p, offset
   set t: parser.peek $p, $offset
-  return [@ok, $t{"kind"}]
+  return [@ok, $t{0}]
 end
 
 fun peekLine: @args p, offset
   set t: parser.peek $p, $offset
-  return [@ok, $t{"line"}]
+  return [@ok, $t{2}]
 end
 
 fun skipEol: @args p
@@ -60,10 +60,10 @@ end
 
 fun consume: @args p, k, err
   set tok: parser.peek $p, 0
-  if $tok{"kind"} == $k:
+  if $tok{0} == $k:
     return [@ok, (parser.advance $p)]
   end
-  errors.err $err, $tok{"line"}, "", ""
+  errors.err $err, $tok{2}, "", ""
 end
 
 fun joinParts: @args parts, sep
@@ -130,30 +130,30 @@ end
 fun parsePrimary: @args p
   set t: parser.peek $p, 0
 
-  if $t{"kind"} == $enum.tokNumberLit:
+  if $t{0} == $enum.tokNumberLit:
     parser.advance $p
     set node: ast.astNode $enum.nkLiteral
-    node{"strVal"}: $t{"lexeme"}
+    node{"strVal"}: $t{1}
     node{"isString"}: 0
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokFloatLit:
+  elseif $t{0} == $enum.tokFloatLit:
     parser.advance $p
     set node: ast.astNode $enum.nkFloatLit
-    node{"strVal"}: $t{"lexeme"}
-    node{"line"}: $t{"line"}
+    node{"strVal"}: $t{1}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokStringLit:
+  elseif $t{0} == $enum.tokStringLit:
     parser.advance $p
     set node: ast.astNode $enum.nkLiteral
-    node{"strVal"}: $t{"lexeme"}
+    node{"strVal"}: $t{1}
     node{"isString"}: 1
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokLBracket:
+  elseif $t{0} == $enum.tokLBracket:
     parser.advance $p
     set elements: []
     parser.skipEol $p
@@ -173,10 +173,10 @@ fun parsePrimary: @args p
     parser.consume $p, $enum.tokRBracket, "Expected ']'"
     set node: ast.astNode $enum.nkBracket
     node{"children"}: $elements
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokMinus:
+  elseif $t{0} == $enum.tokMinus:
     parser.advance $p
     set val: parser.parsePrimary $p
     set node: ast.astNode $enum.nkBinaryOp
@@ -185,10 +185,10 @@ fun parsePrimary: @args p
     node{"op"}: "-"
     node{"left"}: $left
     node{"right"}: $val
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokNot:
+  elseif $t{0} == $enum.tokNot:
     parser.advance $p
     set val: parser.parsePrimary $p
     set node: ast.astNode $enum.nkBinaryOp
@@ -197,34 +197,34 @@ fun parsePrimary: @args p
     node{"op"}: "not"
     node{"left"}: $left
     node{"right"}: $val
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokDollar:
+  elseif $t{0} == $enum.tokDollar:
     parser.advance $p
     set nameTok: parser.consume $p, $enum.tokIdentifier, "Expected variable name after '$'"
-    set name: $nameTok{"lexeme"}
+    set name: $nameTok{1}
     if parser.pmatch $p, $enum.tokDot:
       set propTok: parser.consume $p, $enum.tokIdentifier, "Expected property"
       set resolvedMod: $name
       if (typeof $parser.globalModuleAliases{$name}) == "string":
         resolvedMod: $parser.globalModuleAliases{$name}
       end
-      name: $resolvedMod << "_" << $propTok{"lexeme"}
+      name: $resolvedMod << "_" << $propTok{1}
     end
     set baseNode: ast.astNode $enum.nkVarRef
     baseNode{"refName"}: $name
-    baseNode{"line"}: $nameTok{"line"}
+    baseNode{"line"}: $nameTok{2}
 
     while parser.pmatch $p, $enum.tokLBrace:
       set keyNode: ""
       set nxtTok: parser.peek $p, 0
-      if $nxtTok{"kind"} == $enum.tokIdentifier:
+      if $nxtTok{0} == $enum.tokIdentifier:
         set keyIdTok: parser.advance $p
         keyNode: ast.astNode $enum.nkLiteral
-        keyNode{"strVal"}: $keyIdTok{"lexeme"}
+        keyNode{"strVal"}: $keyIdTok{1}
         keyNode{"isString"}: 1
-        keyNode{"line"}: $keyIdTok{"line"}
+        keyNode{"line"}: $keyIdTok{2}
       else:
         keyNode: parser.parseExpression $p
       end
@@ -232,15 +232,15 @@ fun parsePrimary: @args p
       set mapGetNode: ast.astNode $enum.nkMapGet
       mapGetNode{"targetMap"}: $baseNode
       mapGetNode{"targetKey"}: $keyNode
-      mapGetNode{"line"}: $nameTok{"line"}
+      mapGetNode{"line"}: $nameTok{2}
       baseNode: $mapGetNode
     end
     return [@ok, $baseNode]
 
-  elseif $t{"kind"} == $enum.tokMacroRef:
-    set lineNum: $t{"line"}
+  elseif $t{0} == $enum.tokMacroRef:
+    set lineNum: $t{2}
     set mTok: parser.advance $p
-    set name: "MACRO_" << $mTok{"lexeme"}
+    set name: "MACRO_" << $mTok{1}
     set args: []
 
     if parser.pmatch $p, $enum.tokLParen:
@@ -277,21 +277,21 @@ fun parsePrimary: @args p
     end
     return [@ok, $macroNode]
 
-  elseif $t{"kind"} == $enum.tokAmpersand:
+  elseif $t{0} == $enum.tokAmpersand:
     parser.advance $p
     set idTok: parser.consume $p, $enum.tokIdentifier, "Expected identifier"
     set node: ast.astNode $enum.nkVarRef
-    node{"refName"}: $idTok{"lexeme"}
-    node{"line"}: $idTok{"line"}
+    node{"refName"}: $idTok{1}
+    node{"line"}: $idTok{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokInput:
+  elseif $t{0} == $enum.tokInput:
     parser.advance $p
     set node: ast.astNode $enum.nkInput
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokCall:
+  elseif $t{0} == $enum.tokCall:
     parser.advance $p
     set target: parser.parseExpression $p
     parser.consume $p, $enum.tokLParen, "Expected '('"
@@ -306,10 +306,10 @@ fun parsePrimary: @args p
     set node: ast.astNode $enum.nkCallDynamic
     node{"callTarget"}: $target
     node{"callArgs"}: $args
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokLParen:
+  elseif $t{0} == $enum.tokLParen:
     parser.advance $p
     parser.skipEol $p
 
@@ -319,7 +319,7 @@ fun parsePrimary: @args p
       node{"mapKeys"}: []
       node{"mapValues"}: []
       node{"isList"}: 1
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
     end
 
@@ -327,9 +327,9 @@ fun parsePrimary: @args p
     if ((parser.peekKind $p, 0) == $enum.tokIdentifier) and ((parser.peekKind $p, 1) == $enum.tokColon):
       set idTok: parser.advance $p
       firstExpr: ast.astNode $enum.nkLiteral
-      firstExpr{"strVal"}: $idTok{"lexeme"}
+      firstExpr{"strVal"}: $idTok{1}
       firstExpr{"isString"}: 1
-      firstExpr{"line"}: $idTok{"line"}
+      firstExpr{"line"}: $idTok{2}
     else:
       firstExpr: parser.parseExpression $p
     end
@@ -353,9 +353,9 @@ fun parsePrimary: @args p
         if ((parser.peekKind $p, 0) == $enum.tokIdentifier) and ((parser.peekKind $p, 1) == $enum.tokColon):
           set idTok: parser.advance $p
           k: ast.astNode $enum.nkLiteral
-          k{"strVal"}: $idTok{"lexeme"}
+          k{"strVal"}: $idTok{1}
           k{"isString"}: 1
-          k{"line"}: $idTok{"line"}
+          k{"line"}: $idTok{2}
         else:
           k: parser.parseExpression $p
         end
@@ -374,7 +374,7 @@ fun parsePrimary: @args p
       node{"mapKeys"}: $keys
       node{"mapValues"}: $vals
       node{"isList"}: 0
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
 
     ; 2. List/Tuple: (val1, val2, ...)
@@ -394,7 +394,7 @@ fun parsePrimary: @args p
       node{"mapKeys"}: []
       node{"mapValues"}: $vals
       node{"isList"}: 1
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
 
     ; 3. Grouped expression: (expr)
@@ -404,16 +404,16 @@ fun parsePrimary: @args p
       return [@ok, $firstExpr]
     end
 
-  elseif $t{"kind"} == $enum.tokIdentifier:
+  elseif $t{0} == $enum.tokIdentifier:
     set idTok: parser.advance $p
-    set name: $idTok{"lexeme"}
+    set name: $idTok{1}
     if parser.pmatch $p, $enum.tokDot:
       set subTok: parser.consume $p, $enum.tokIdentifier, "Expected property after '.'"
       set resolvedMod: $name
       if (typeof $parser.globalModuleAliases{$name}) == "string":
         resolvedMod: $parser.globalModuleAliases{$name}
       end
-      name: $resolvedMod << "_" << $subTok{"lexeme"}
+      name: $resolvedMod << "_" << $subTok{1}
     end
 
     set args: []
@@ -425,24 +425,28 @@ fun parsePrimary: @args p
     set node: ast.astNode $enum.nkCommand
     node{"callName"}: $name
     node{"callArgs"}: $args
-    node{"line"}: $idTok{"line"}
+    node{"line"}: $idTok{2}
     return [@ok, $node]
 
   else:
-    errors.err "Unexpected token in expression: " << (string $t{"kind"}), $t{"line"}, "", ""
+    errors.err "Unexpected token in expression: " << (string $t{0}), $t{2}, "", ""
   end
 end
 
 fun parseFactor: @args p
   set left: parser.parsePrimary $p
-  while ((parser.peekKind $p, 0) == $enum.tokStar) or ((parser.peekKind $p, 0) == $enum.tokSlash) or ((parser.peekKind $p, 0) == $enum.tokMod):
+  while 1 == 1:
+    set pk: parser.peekKind $p, 0
+    if ($pk != $enum.tokStar) and ($pk != $enum.tokSlash) and ($pk != $enum.tokMod):
+      break
+    end
     set opTok: parser.advance $p
     set right: parser.parsePrimary $p
     set node: ast.astNode $enum.nkBinaryOp
-    node{"op"}: $opTok{"lexeme"}
+    node{"op"}: $opTok{1}
     node{"left"}: $left
     node{"right"}: $right
-    node{"line"}: $opTok{"line"}
+    node{"line"}: $opTok{2}
     left: $node
   end
   return [@ok, $left]
@@ -450,20 +454,24 @@ end
 
 fun parseTerm: @args p
   set left: parser.parseFactor $p
-  while ((parser.peekKind $p, 0) == $enum.tokPlus) or ((parser.peekKind $p, 0) == $enum.tokMinus) or ((parser.peekKind $p, 0) == $enum.tokConcat) or ((parser.peekKind $p, 0) == $enum.tokBitXor) or ((parser.peekKind $p, 0) == $enum.tokShr) or ((parser.peekKind $p, 0) == $enum.tokShl):
+  while 1 == 1:
+    set pk: parser.peekKind $p, 0
+    if ($pk != $enum.tokPlus) and ($pk != $enum.tokMinus) and ($pk != $enum.tokConcat) and ($pk != $enum.tokBitXor) and ($pk != $enum.tokShr) and ($pk != $enum.tokShl):
+      break
+    end
     set opTok: parser.advance $p
     set right: parser.parseFactor $p
     set node: ""
-    if $opTok{"kind"} == $enum.tokConcat:
+    if $opTok{0} == $enum.tokConcat:
       node: ast.astNode $enum.nkInfix
       node{"op"}: "<<"
     else:
       node: ast.astNode $enum.nkBinaryOp
-      node{"op"}: $opTok{"lexeme"}
+      node{"op"}: $opTok{1}
     end
     node{"left"}: $left
     node{"right"}: $right
-    node{"line"}: $opTok{"line"}
+    node{"line"}: $opTok{2}
     left: $node
   end
   return [@ok, $left]
@@ -471,14 +479,18 @@ end
 
 fun parseComparison: @args p
   set left: parser.parseTerm $p
-  while ((parser.peekKind $p, 0) == $enum.tokLt) or ((parser.peekKind $p, 0) == $enum.tokGt) or ((parser.peekKind $p, 0) == $enum.tokEqEq) or ((parser.peekKind $p, 0) == $enum.tokNeq) or ((parser.peekKind $p, 0) == $enum.tokGe) or ((parser.peekKind $p, 0) == $enum.tokLe):
+  while 1 == 1:
+    set pk: parser.peekKind $p, 0
+    if ($pk != $enum.tokLt) and ($pk != $enum.tokGt) and ($pk != $enum.tokEqEq) and ($pk != $enum.tokNeq) and ($pk != $enum.tokGe) and ($pk != $enum.tokLe):
+      break
+    end
     set opTok: parser.advance $p
     set right: parser.parseTerm $p
     set node: ast.astNode $enum.nkBinaryOp
-    node{"op"}: $opTok{"lexeme"}
+    node{"op"}: $opTok{1}
     node{"left"}: $left
     node{"right"}: $right
-    node{"line"}: $opTok{"line"}
+    node{"line"}: $opTok{2}
     left: $node
   end
   return [@ok, $left]
@@ -552,18 +564,19 @@ end
 fun parseImport: @args p
   set pathParts: []
   set firstPart: parser.consume $p, $enum.tokIdentifier, "Expected module name"
-  push $pathParts, $firstPart{"lexeme"}
+  push $pathParts, $firstPart{1}
 
   while parser.pmatch $p, $enum.tokDoubleColon:
     set subPart: parser.consume $p, $enum.tokIdentifier, "Expected submodule name"
-    push $pathParts, $subPart{"lexeme"}
+    push $pathParts, $subPart{1}
   end
 
   set moduleName: $pathParts{(sizeof $pathParts) - 1}
+
   set filename: parser.resolveModulePath $pathParts
 
   if (sizeof $filename) == 0:
-    errors.err "Could not find module '" << (parser.joinParts $pathParts, "::") << "'", $firstPart{"line"}, "", ""
+    errors.err "Could not find module '" << (parser.joinParts $pathParts, "::") << "'", $firstPart{2}, "", ""
   end
 
   if $parser.globalImportedModules{$filename} == 1:
@@ -603,15 +616,15 @@ end
 fun parseStatement: @args p
   set t: parser.peek $p, 0
 
-  if $t{"kind"} == $enum.tokUsing:
+  if $t{0} == $enum.tokUsing:
     parser.advance $p
     set importedStmts: parser.parseImport $p
     set node: ast.astNode $enum.nkBlock
     node{"blockStmts"}: $importedStmts
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokSet:
+  elseif $t{0} == $enum.tokSet:
     parser.advance $p
 
     ; Destructuring: set [a, b]: [1, 2]
@@ -619,10 +632,10 @@ fun parseStatement: @args p
       parser.advance $p
       set names: []
       set firstVar: parser.consume $p, $enum.tokIdentifier, "Expected variable name in destructuring"
-      push $names, $firstVar{"lexeme"}
+      push $names, $firstVar{1}
       while parser.pmatch $p, $enum.tokComma:
         set nextVar: parser.consume $p, $enum.tokIdentifier, "Expected variable name"
-        push $names, $nextVar{"lexeme"}
+        push $names, $nextVar{1}
       end
       parser.consume $p, $enum.tokRBracket, "Expected ']' after destructuring variables"
       parser.consume $p, $enum.tokColon, "Expected ':' after destructuring block"
@@ -630,13 +643,13 @@ fun parseStatement: @args p
       set node: ast.astNode $enum.nkDestructionDecl
       node{"destructNames"}: $names
       node{"destructVal"}: $val
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
 
     ; Standard assignment: set a: 1 or set a*: 1
     else:
       set nameTok: parser.consume $p, $enum.tokIdentifier, "Expected variable name"
-      set name: $nameTok{"lexeme"}
+      set name: $nameTok{1}
       set isGlobal: 0
       if parser.pmatch $p, $enum.tokStar:
         isGlobal: 1
@@ -651,11 +664,11 @@ fun parseStatement: @args p
       end
       node{"varName"}: $name
       node{"varValue"}: $val
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
     end
 
-  elseif $t{"kind"} == $enum.tokMatch:
+  elseif $t{0} == $enum.tokMatch:
     parser.advance $p
     set target: parser.parseExpression $p
     parser.consume $p, $enum.tokColon, "Expected ':' after match target"
@@ -680,10 +693,10 @@ fun parseStatement: @args p
     set node: ast.astNode $enum.nkMatch
     node{"matchTarget"}: $target
     node{"matchBranches"}: $branches
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokIf:
+  elseif $t{0} == $enum.tokIf:
     parser.advance $p
     set cond: parser.parseExpression $p
     parser.consume $p, $enum.tokColon, "Expected ':'"
@@ -693,7 +706,7 @@ fun parseStatement: @args p
     rootIf{"condition"}: $cond
     rootIf{"thenBranch"}: $thenBranch
     rootIf{"elseBranch"}: ""
-    rootIf{"line"}: $t{"line"}
+    rootIf{"line"}: $t{2}
     set currentIf: $rootIf
 
     while (parser.peekKind $p, 0) == $enum.tokElseIf:
@@ -720,7 +733,7 @@ fun parseStatement: @args p
     parser.consume $p, $enum.tokEnd, "Expected 'end'"
     return [@ok, $rootIf]
 
-  elseif $t{"kind"} == $enum.tokDefmacro:
+  elseif $t{0} == $enum.tokDefmacro:
     parser.advance $p
     set mTok: parser.consume $p, $enum.tokIdentifier, "Expected macro name"
     parser.consume $p, $enum.tokColon, "Expected ':'"
@@ -728,21 +741,21 @@ fun parseStatement: @args p
     set body: parser.parseBlock $p
     parser.consume $p, $enum.tokEnd, "Expected 'end'"
     set node: ast.astNode $enum.nkFunction
-    node{"fnName"}: "MACRO_" << $mTok{"lexeme"}
+    node{"fnName"}: "MACRO_" << $mTok{1}
     node{"fnArgs"}: ["M_ARGV"]
     node{"fnBody"}: $body
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokNamespace:
+  elseif $t{0} == $enum.tokNamespace:
     parser.advance $p
     parser.consume $p, $enum.tokIdentifier, "Expected namespace name"
     set node: ast.astNode $enum.nkBlock
     node{"blockStmts"}: []
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokFor:
+  elseif $t{0} == $enum.tokFor:
     parser.advance $p
     parser.consume $p, $enum.tokAmpersand, "Expected '&'"
     set iterTok: parser.consume $p, $enum.tokIdentifier, "Expected iter"
@@ -757,15 +770,15 @@ fun parseStatement: @args p
     parser.consume $p, $enum.tokEnd, "Expected 'end'"
 
     set iterNode: ast.astNode $enum.nkLiteral
-    iterNode{"strVal"}: $iterTok{"lexeme"}
+    iterNode{"strVal"}: $iterTok{1}
     set node: ast.astNode $enum.nkLoop
     node{"loopType"}: "for"
     node{"loopArgs"}: [$iterNode, $startExpr, $endExpr, $stepExpr]
     node{"loopBody"}: $body
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokWhile:
+  elseif $t{0} == $enum.tokWhile:
     parser.advance $p
     set cond: parser.parseExpression $p
     parser.consume $p, $enum.tokColon, "Expected ':'"
@@ -774,10 +787,10 @@ fun parseStatement: @args p
     set node: ast.astNode $enum.nkWhile
     node{"whileCondition"}: $cond
     node{"whileBody"}: $body
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokExposed:
+  elseif $t{0} == $enum.tokExposed:
     parser.advance $p
     parser.consume $p, $enum.tokFun, "Expected 'fun' keyword after 'exposed'"
     set fnTok: parser.consume $p, $enum.tokIdentifier, "Expected function name"
@@ -789,7 +802,7 @@ fun parseStatement: @args p
       parser.advance $p
       while 1 == 1:
         set aTok: parser.consume $p, $enum.tokIdentifier, "Expected arg name"
-        push $args, $aTok{"lexeme"}
+        push $args, $aTok{1}
         if (parser.pmatch $p, $enum.tokComma) == 0: break end
       end
       parser.skipEol $p
@@ -797,14 +810,14 @@ fun parseStatement: @args p
     set body: parser.parseBlock $p
     parser.consume $p, $enum.tokEnd, "Expected 'end'"
     set node: ast.astNode $enum.nkFunction
-    node{"fnName"}: $fnTok{"lexeme"}
+    node{"fnName"}: $fnTok{1}
     node{"fnArgs"}: $args
     node{"fnBody"}: $body
     node{"fnExpo"}: 1
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokFun:
+  elseif $t{0} == $enum.tokFun:
     parser.advance $p
     set fnTok: parser.consume $p, $enum.tokIdentifier, "Expected function name"
     parser.consume $p, $enum.tokColon, "Expected ':'"
@@ -815,7 +828,7 @@ fun parseStatement: @args p
       parser.advance $p
       while 1 == 1:
         set aTok: parser.consume $p, $enum.tokIdentifier, "Expected arg name"
-        push $args, $aTok{"lexeme"}
+        push $args, $aTok{1}
         if (parser.pmatch $p, $enum.tokComma) == 0: break end
       end
       parser.skipEol $p
@@ -823,37 +836,37 @@ fun parseStatement: @args p
     set body: parser.parseBlock $p
     parser.consume $p, $enum.tokEnd, "Expected 'end'"
     set node: ast.astNode $enum.nkFunction
-    node{"fnName"}: $fnTok{"lexeme"}
+    node{"fnName"}: $fnTok{1}
     node{"fnArgs"}: $args
     node{"fnBody"}: $body
     node{"fnExpo"}: 0
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokReturn:
+  elseif $t{0} == $enum.tokReturn:
     parser.advance $p
     if ((parser.peekKind $p, 0) != $enum.tokEol) and ((parser.peekKind $p, 0) != $enum.tokEof):
       set val: parser.parseExpression $p
       set node: ast.astNode $enum.nkReturn
       node{"returnVal"}: $val
-      node{"line"}: $t{"line"}
+      node{"line"}: $t{2}
       return [@ok, $node]
     end
     set node: ast.astNode $enum.nkReturn
     node{"returnVal"}: ""
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif $t{"kind"} == $enum.tokIdentifier:
+  elseif $t{0} == $enum.tokIdentifier:
     set idTok: parser.advance $p
-    set name: $idTok{"lexeme"}
+    set name: $idTok{1}
     if parser.pmatch $p, $enum.tokDot:
       set subTok: parser.consume $p, $enum.tokIdentifier, "Expected prop"
       set resolvedMod: $name
       if (typeof $parser.globalModuleAliases{$name}) == "string":
         resolvedMod: $parser.globalModuleAliases{$name}
       end
-      name: $resolvedMod << "_" << $subTok{"lexeme"}
+      name: $resolvedMod << "_" << $subTok{1}
     end
 
     if parser.pmatch $p, $enum.tokColon:
@@ -861,7 +874,7 @@ fun parseStatement: @args p
       set node: ast.astNode $enum.nkAssignment
       node{"varName"}: $name
       node{"varValue"}: $val
-      node{"line"}: $idTok{"line"}
+      node{"line"}: $idTok{2}
       return [@ok, $node]
 
     elseif parser.pmatch $p, $enum.tokLBrace:
@@ -874,7 +887,7 @@ fun parseStatement: @args p
         set node: ast.astNode $enum.nkCommand
         node{"callName"}: "set_index"
         node{"callArgs"}: [$listRef, $keyExpr, $valExpr]
-        node{"line"}: $idTok{"line"}
+        node{"line"}: $idTok{2}
         return [@ok, $node]
       end
       set mapRef: ast.astNode $enum.nkVarRef
@@ -882,7 +895,7 @@ fun parseStatement: @args p
       set node: ast.astNode $enum.nkMapGet
       node{"targetMap"}: $mapRef
       node{"targetKey"}: $keyExpr
-      node{"line"}: $idTok{"line"}
+      node{"line"}: $idTok{2}
       return [@ok, $node]
 
     elseif parser.pmatch $p, $enum.tokLParen:
@@ -897,7 +910,7 @@ fun parseStatement: @args p
       set node: ast.astNode $enum.nkCommand
       node{"callName"}: $name
       node{"callArgs"}: $args
-      node{"line"}: $idTok{"line"}
+      node{"line"}: $idTok{2}
       return [@ok, $node]
 
     else:
@@ -909,11 +922,11 @@ fun parseStatement: @args p
       set node: ast.astNode $enum.nkCommand
       node{"callName"}: $name
       node{"callArgs"}: $args
-      node{"line"}: $idTok{"line"}
+      node{"line"}: $idTok{2}
       return [@ok, $node]
     end
 
-  elseif $t{"kind"} == $enum.tokForeach:
+  elseif $t{0} == $enum.tokForeach:
     parser.advance $p
     parser.consume $p, $enum.tokAmpersand, "Expected '&' before loop variable"
     set firstVarTok: parser.consume $p, $enum.tokIdentifier, "Expected variable name"
@@ -927,8 +940,8 @@ fun parseStatement: @args p
       if (parser.peekKind $p, 0) == $enum.tokAmpersand:
         parser.advance $p
         set valVarTok: parser.consume $p, $enum.tokIdentifier, "Expected value variable name"
-        valName: $valVarTok{"lexeme"}
-        keyName: $firstVarTok{"lexeme"}
+        valName: $valVarTok{1}
+        keyName: $firstVarTok{1}
         if (parser.peekKind $p, 0) == $enum.tokIn:
           parser.advance $p
         else:
@@ -936,19 +949,19 @@ fun parseStatement: @args p
         end
         target: parser.parseExpression $p
       else:
-        valName: $firstVarTok{"lexeme"}
+        valName: $firstVarTok{1}
         target: parser.parseExpression $p
       end
       parser.consume $p, $enum.tokColon, "Expected ':' after foreach declaration"
 
     elseif (parser.peekKind $p, 0) == $enum.tokIn:
       parser.advance $p
-      valName: $firstVarTok{"lexeme"}
+      valName: $firstVarTok{1}
       target: parser.parseExpression $p
       parser.consume $p, $enum.tokColon, "Expected ':' after foreach declaration"
 
     else:
-      errors.err "Expected ',' or 'in' after foreach variable", $t{"line"}, "", ""
+      errors.err "Expected ',' or 'in' after foreach variable", $t{2}, "", ""
     end
 
     set bodyBlock: parser.parseBlock $p
@@ -959,24 +972,22 @@ fun parseStatement: @args p
     node{"mapLoopVal"}: $valName
     node{"mapLoopTarget"}: $target
     node{"mapLoopBody"}: $bodyBlock
-    node{"line"}: $t{"line"}
+    node{"line"}: $t{2}
     return [@ok, $node]
 
-  elseif parser.isExpressionStart $t{"kind"}:
+  elseif parser.isExpressionStart $t{0}:
     return parser.parseExpression $p
 
   else:
-    errors.err "Unknown statement: " << (string $t{"kind"}), $t{"line"}, "", ""
+    errors.err "Unknown statement: " << (string $t{0}), $t{2}, "", ""
   end
 end
 
 fun injectPrelude: @args astRoot
   set pathParts: ["std", "Base"]
   set filename: parser.resolveModulePath $pathParts
-  @println "injectPrelude filename: '" << $filename << "'"
   if (sizeof $filename) == 0: return [@ok, 1] end
   if $parser.globalImportedModules{$filename} == 1:
-    @println "injectPrelude: already imported"
     return [@ok, 1]
   end
 
@@ -984,26 +995,21 @@ fun injectPrelude: @args astRoot
   set oldFile: $errors.currentCompilingFile
   errors.currentCompilingFile: $filename
   set content: readfile $filename
-  @println "injectPrelude readfile bytes: " << (string (sizeof $content))
   set tokens: lexer.lex $content
-  @println "injectPrelude tokens: " << (string (sizeof $tokens))
   set subParser: parser.newParser $tokens
   set moduleAst: parser.parseProgram $subParser
   errors.currentCompilingFile: $oldFile
 
   set combined: []
   set mn: sizeof $moduleAst{"stmts"}
-  @println "injectPrelude moduleAst stmts: " << (string $mn)
   for &i, 0, $mn, 1:
     push $combined, $moduleAst{"stmts"}{$i}
   end
   set rn: sizeof $astRoot{"stmts"}
-  @println "injectPrelude astRoot stmts: " << (string $rn)
   for &j, 0, $rn, 1:
     push $combined, $astRoot{"stmts"}{$j}
   end
   astRoot{"stmts"}: $combined
-  @println "injectPrelude total stmts: " << (string (sizeof $combined))
   return [@ok, 1]
 end
 

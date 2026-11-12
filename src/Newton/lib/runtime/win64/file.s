@@ -145,7 +145,7 @@ sys_write_bytes:
     mov -8(%rdx), %rax; cmp $3, %rax; jne .Lwb_done
     mov 0(%rdx), %r13
     test %r13, %r13; jz .Lwb_done
-    lea 8(%rdx), %r14
+    mov 16(%rdx), %r14
     mov %r13, %rcx
 
     call _malloc

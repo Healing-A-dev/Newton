@@ -2,6 +2,10 @@
 ; Description: File handling module for Newton's standard library
 ; Date: April 30th, 2026 *
 
+set fmRead*: 0
+set fmWrite*: 577
+set fmAppend*: 1089
+
 fun open: @args path, flags
     set fd: sys_open $path, $flags
     if $fd < 0:

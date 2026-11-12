@@ -263,7 +263,24 @@ collection_get:
     mov $1, %rax; ret
 
 .Lcg_str:
-    sar $1, %rsi; xor %rax, %rax; movb (%rdi, %rsi, 1), %al; shl $1, %rax; or $1, %rax; ret
+    mov %rsi, %rax
+    and $1, %rax
+    jz .Lcg_zero
+    sar $1, %rsi
+    cmp $0, %rsi
+    jl .Lcg_zero
+    push %rdi
+    push %rsi
+    call string_len
+    pop %rsi
+    pop %rdi
+    cmp %rax, %rsi
+    jge .Lcg_zero
+    xor %rax, %rax
+    movb (%rdi, %rsi, 1), %al
+    shl $1, %rax
+    or $1, %rax
+    ret
 
 .global collection_set
 collection_set:
@@ -305,84 +322,237 @@ collection_get_key:
 .global new_array
 new_array:
     push %rbp; mov %rsp, %rbp
-    cmp $262144, %rdi
-    jge .Larr_size_ok
-    mov $262144, %rdi
-.Larr_size_ok:
-    call _malloc
+    push %rbx; push %r12; push %r13
+    sub $8, %rsp
 
-    movq $3, 0(%rax)
-    movq $0, 8(%rax)
-    add $8, %rax
+    # Calculate initial capacity (in elements)
+    cmp $64, %rdi
+    jg .Lnew_arr_calc_cap
+    mov $8, %r12                        # Default capacity: 8 elements
+    jmp .Lnew_arr_alloc_buf
+
+.Lnew_arr_calc_cap:
+    sub $64, %rdi
+    shr $3, %rdi                        # count = (rdi - 64) / 8
+    add $4, %rdi                        # count + 4 headroom
+    cmp $8, %rdi
+    jge .Lnew_arr_cap_ok
+    mov $8, %rdi
+.Lnew_arr_cap_ok:
+    mov %rdi, %r12                      # r12 = capacity (elements)
+
+.Lnew_arr_alloc_buf:
+    # Allocate data buffer chunk: tag 7, payload = (capacity * 8) + 8 bytes
+    mov %r12, %rdi
+    shl $3, %rdi                        # bytes = capacity * 8
+    add $8, %rdi                        # +8 bytes for TAG_ARRAY_DATA
+    call _malloc                        # returns rax = chunk + 16
+    movq $7, 0(%rax)                    # Tag 7 = TAG_ARRAY_DATA
+    lea 8(%rax), %r13                   # r13 = data_ptr (chunk + 24)
+
+    # Zero out data buffer with tagged 0 ($1)
+    mov %r13, %rdi
+    mov %r12, %rcx
+    mov $1, %rax
+    cld
+    rep stosq
+
+    # Allocate descriptor chunk: tag 3, payload = 32 bytes (tag + len, cap, data_ptr)
+    push %r13                           # Protect data_ptr across _malloc
+    mov $32, %rdi
+    call _malloc                        # returns rax = chunk + 16
+    pop %r13
+    movq $3, 0(%rax)                    # Tag 3 = TAG_ARRAY
+    movq $0, 8(%rax)                    # length = 0
+    mov %r12, 16(%rax)                  # capacity = r12
+    mov %r13, 24(%rax)                  # data_ptr = r13
+    lea 8(%rax), %rax                   # rax = user_ptr (chunk + 24)
+
+    add $8, %rsp
+    pop %r13; pop %r12; pop %rbx
     leave; ret
 
 .global array_set
 array_set:
     push %rbp; mov %rsp, %rbp
-    test $1, %rdx
-    jnz .Larr_barrier_skip
+    push %rbx; push %r12; push %r13; push %r14
 
-    push %rdi; push %rsi; push %rdx; push %rcx
-    mov %rdx, %rdi
-    call make_grey
+    mov %rsi, %rax
+    and $1, %rax
+    jz .Larr_set_done
+    sar $1, %rsi                        # rsi = untagged index
+    cmp $0, %rsi
+    jl .Larr_set_done
 
-    pop %rcx; pop %rdx; pop %rsi; pop %rdi
+    mov %rdi, %rbx                      # rbx = arr
+    mov %rsi, %r12                      # r12 = index
+    mov %rdx, %r13                      # r13 = val
 
-.Larr_barrier_skip:
-    sar $1, %rsi
-    mov 0(%rdi), %rcx
-    cmp %rsi, %rcx
-    jg .Larr_set_do
+    # Check capacity at 8(%rbx)
+    mov 8(%rbx), %rax
+    cmp %r12, %rax
+    jg .Larr_set_has_cap
 
-    mov %rsi, %rcx
-    inc %rcx
-    mov %rcx, 0(%rdi)
+    # Need to grow!
+    # new_capacity = max(capacity * 2, index + 16)
+    shl $1, %rax                        # capacity * 2
+    lea 16(%r12), %rcx                  # index + 16
+    cmp %rcx, %rax
+    cmovl %rcx, %rax
+    mov %rax, %r14                      # r14 = new_capacity
 
-.Larr_set_do:
-    mov %rdx, 8(%rdi, %rsi, 8)
+    # Allocate new data buffer chunk: tag 7, size = (new_capacity * 8) + 8
+    mov %r14, %rdi
+    shl $3, %rdi                        # new_capacity * 8 bytes
+    add $8, %rdi                        # +8 bytes for TAG_ARRAY_DATA
+    call _malloc                        # returns rax = chunk + 16
+    movq $7, 0(%rax)
+    lea 8(%rax), %rax                   # rax = new data_ptr (chunk + 24)
+
+    # Zero-fill new buffer with $1 (tagged 0)
+    push %rax
+    mov %rax, %rdi
+    mov %r14, %rcx
+    mov $1, %rax
+    cld
+    rep stosq
+    pop %rax
+
+    # Copy old elements to new buffer
+    mov 16(%rbx), %rsi                  # old data_ptr
+    mov 0(%rbx), %rcx                   # old length
+    test %rsi, %rsi
+    jz .Larr_set_update_cap
+    test %rcx, %rcx
+    jz .Larr_set_update_cap
+
+    push %rax
+    mov %rax, %rdi                      # dst = new data_ptr
+    cld
+    rep movsq
+    pop %rax
+
+.Larr_set_update_cap:
+    mov %r14, 8(%rbx)                   # update capacity
+    mov %rax, 16(%rbx)                  # update data_ptr
+
+.Larr_set_has_cap:
+    # Update length if index >= length
+    mov 0(%rbx), %rcx
+    cmp %r12, %rcx
+    jg .Larr_set_do_store
+    lea 1(%r12), %rcx
+    mov %rcx, 0(%rbx)
+
+.Larr_set_do_store:
+    mov 16(%rbx), %rax                  # data_ptr
+    mov %r13, (%rax, %r12, 8)
+
+.Larr_set_done:
+    pop %r14; pop %r13; pop %r12; pop %rbx
     leave; ret
 
 .global array_get
-array_get: sar $1, %rsi; mov 8(%rdi, %rsi, 8), %rax; ret
+array_get:
+    mov %rsi, %rax
+    and $1, %rax
+    jz .Larr_get_null
+    sar $1, %rsi
+    cmp $0, %rsi
+    jl .Larr_get_null
+    cmp 0(%rdi), %rsi                   # cmp index, length
+    jge .Larr_get_null
+    mov 16(%rdi), %rax                  # rax = data_ptr
+    mov (%rax, %rsi, 8), %rax           # load element
+    ret
+
+.Larr_get_null:
+    mov $1, %rax
+    ret
 
 .global array_len
-array_len: mov 0(%rdi), %rax; shl $1, %rax; or $1, %rax; ret
+array_len:
+    mov 0(%rdi), %rax
+    shl $1, %rax
+    or $1, %rax
+    ret
 
 .global array_delete
 array_delete:
     push %rbp; mov %rsp, %rbp
+    test $1, %rsi; jz .Larr_del_out_of_bounds
     sar $1, %rsi
     cmp $0, %rsi; jl .Larr_del_out_of_bounds
     mov 0(%rdi), %rcx
     cmp %rsi, %rcx; jle .Larr_del_out_of_bounds
+
     mov %rcx, %r8; sub %rsi, %r8; dec %r8
     test %r8, %r8; jz .Larr_del_finish
-    lea 8(%rdi, %rsi, 8), %rdx
-    lea 16(%rdi, %rsi, 8), %r9
-
+    mov 16(%rdi), %rax                  # data_ptr
+    lea (%rax, %rsi, 8), %rdx           # dest = &data_ptr[rsi]
+    lea 8(%rdx), %rcx                   # src = &data_ptr[rsi+1]
 .Larr_del_shift_loop:
-    mov (%r9), %rax; mov %rax, (%rdx)
-    add $8, %rdx; add $8, %r9; dec %r8
+    mov (%rcx), %r9
+    mov %r9, (%rdx)
+    add $8, %rcx
+    add $8, %rdx
+    dec %r8
     jnz .Larr_del_shift_loop
 
 .Larr_del_finish:
-    dec %rcx; mov %rcx, 0(%rdi)
-    mov $3, %rax
+    decq 0(%rdi)
+    mov 0(%rdi), %rcx
+    mov 16(%rdi), %rax
+    movq $1, (%rax, %rcx, 8)
+    mov $3, %rax                        # true
     leave; ret
 
 .Larr_del_out_of_bounds:
-    mov $1, %rax
+    mov $1, %rax                        # false
     leave; ret
 
 .global array_concat
 array_concat:
-    push %rbp; mov %rsp, %rbp; push %rbx; push %r12; push %r13
-    mov %rdi, %rbx; mov %rsi, %r12; mov 0(%rbx), %r8; mov 0(%r12), %r9
-    mov %r8, %rdi; add %r9, %rdi; shl $3, %rdi; add $16, %rdi; push %r8; push %r9; call _malloc
-    mov %rax, %r13; pop %r9; pop %r8; movq $3, 0(%r13); mov %r8, %rcx; add %r9, %rcx; mov %rcx, 8(%r13)
-    lea 8(%rbx), %rsi; lea 16(%r13), %rdi; mov %r8, %rcx; cld; rep movsq
-    lea 8(%r12), %rsi; mov %r9, %rcx; rep movsq
-    lea 8(%r13), %rax; pop %r13; pop %r12; pop %rbx; leave; ret
+    push %rbp; mov %rsp, %rbp
+    push %rbx; push %r12; push %r13; push %r14
+    mov %rdi, %rbx                      # arr1
+    mov %rsi, %r12                      # arr2
+    mov 0(%rbx), %r8                    # len1
+    mov 0(%r12), %r9                    # len2
+    lea (%r8, %r9), %r14                # total_len = len1 + len2
+
+    # Allocate new_array with initial capacity for total_len
+    lea 64(,%r14,8), %rdi
+    call new_array
+    mov %rax, %r13                      # r13 = new_arr
+
+    # Set new length
+    mov %r14, 0(%r13)
+
+    # Copy elements from arr1
+    mov 0(%rbx), %rcx
+    test %rcx, %rcx
+    jz .Lconcat_copy_arr2
+    mov 16(%rbx), %rsi                  # src = arr1->data_ptr
+    mov 16(%r13), %rdi                  # dst = new_arr->data_ptr
+    cld
+    rep movsq
+
+.Lconcat_copy_arr2:
+    mov 0(%r12), %rcx
+    test %rcx, %rcx
+    jz .Lconcat_done
+    mov 16(%r12), %rsi                  # src = arr2->data_ptr
+    mov 16(%r13), %rdi                  # dst = new_arr->data_ptr
+    mov 0(%rbx), %rax
+    lea (%rdi, %rax, 8), %rdi           # dst + len1 * 8
+    cld
+    rep movsq
+
+.Lconcat_done:
+    mov %r13, %rax
+    pop %r14; pop %r13; pop %r12; pop %rbx
+    leave; ret
 
 .global new_map
 new_map:
@@ -555,6 +725,21 @@ node_next:
 .Lnn_null:
     xor %rax, %rax; ret
 
+.global newton_ptr_to_int
+newton_ptr_to_int:
+    mov %rdi, %rax
+    shl $1, %rax
+    or $1, %rax
+    ret
+
+.global newton_peek_qword
+newton_peek_qword:
+    sar $1, %rsi
+    mov (%rdi, %rsi), %rax
+    shl $1, %rax
+    or $1, %rax
+    ret
+
 .global get_type_str
 get_type_str:
     push %rbp; mov %rsp, %rbp
@@ -633,31 +818,19 @@ newton_box_float:
 
 .global F_alloc_array
 F_alloc_array:
-    push %rbp; mov %rsp, %rbp; mov 16(%rbp), %rax; sar $1, %rax; push %rax
-    mov %rax, %rdi; shl $3, %rdi; add $16, %rdi; call _malloc
-    mov %rax, %r8; movq $3, 0(%r8); pop %rcx; mov %rcx, 8(%r8)
-    lea 16(%r8), %rdi; mov %rcx, %rbx; mov %rbx, %rcx; mov $1, %rax; cld; rep stosq
-    lea 8(%r8), %rax; leave; ret
+    push %rbp; mov %rsp, %rbp
+    mov 16(%rbp), %rdi
+    sar $1, %rdi
+    shl $3, %rdi
+    add $64, %rdi
+    call new_array
+    leave; ret
 
 .global alloc_flat_array
 alloc_flat_array:
     push %rbp; mov %rsp, %rbp
-    push %rbx; push %r12
-    mov %rdi, %rbx
-    sar $1, %rbx
-    mov %rbx, %rdi
+    sar $1, %rdi
     shl $3, %rdi
-    add $16, %rdi
-    call _malloc
-
-    mov %rax, %r12
-    movq $3, 0(%r12)
-    mov %rbx, 8(%r12)
-    lea 16(%r12), %rdi
-    mov %rbx, %rcx
-    mov $1, %rax
-    cld
-    rep stosq
-    lea 8(%r12), %rax
-    pop %r12; pop %rbx
+    add $64, %rdi
+    call new_array
     leave; ret

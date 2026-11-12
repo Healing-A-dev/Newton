@@ -1,7 +1,7 @@
 using enum
 
 fun astNode: @args object
-  set astNode: ("line": 0, "autoUnwrap": 0, "fromImport": 0, "kind": $object)
+  set astNode: ("line": 0, "kind": $object)
   if $object == $enum.nkProgram:
     astNode{"stmts"}: []
   elseif $object == $enum.nkBlock:

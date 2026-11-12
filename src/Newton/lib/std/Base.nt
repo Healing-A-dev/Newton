@@ -7,13 +7,12 @@ using std::file
 using std::string
 using std::collection
 using std::system
+using std::os
+using std::path
 
 ; ------------------------------------------
 ; Global Variables
 ; ------------------------------------------
-set fmRead*: 0
-set fmWrite*: 577
-set fmAppend*: 1089
 set __iota__*: -1
 set argc*: Std_Base_newton_get_argc
 set argv*: Std_Base_newton_get_argv
@@ -180,11 +179,11 @@ defmacro print:
 				prints " "
 			else:
 				match (typeof $M_ARGV{$s}):
-					"string" -> prints $M_ARGV{$s}
-					"number" -> prints $M_ARGV{$s}
-					"float"  -> prints $M_ARGV{$s}
-					"list"   -> io.print $M_ARGV{$s}
-					"map"    -> io.print $M_ARGV{$s}
+					"string" -> prints $M_ARGV{$s}, "\n"
+					"number" -> prints $M_ARGV{$s}, "\n"
+					"float"  -> prints $M_ARGV{$s}, "\n"
+					"list"   -> io.println $M_ARGV{$s}
+					"map"    -> io.println $M_ARGV{$s}
 				end
 			end
 		end
@@ -215,12 +214,15 @@ end
 ; ------------------------------------------
 ; Global File Function Wrappers
 ; ------------------------------------------
+set fmRead*: 0
+set fmWrite*: 577
+set fmAppend*: 1089
 fun fopen: @args file, flags
 	set flag: $flags
 	match $flag:
-		"r" -> flag: $fmRead
-		"w" -> flag: $fmWrite
-		"a" -> flag: $fmAppend
+		"r" -> flag: 0
+		"w" -> flag: 577
+		"a" -> flag: 1089
 	end
 	return @capture file.open $file, $flag
 end
@@ -243,6 +245,12 @@ end
 
 fun readfile: @args file
 	return @capture file.readEntireFile $file
+end
+
+fun writefile: @args filename, content
+	set fd: fopen $filename, "w"
+	fwrite $fd, $content
+	return @capture file.close $fd
 end
 
 fun fgets: @args fd, len
@@ -286,7 +294,6 @@ end
 
 defmacro List:
 	io.println "Broken currently [WIP]"
-	;return collection.mallocArray $M_ARGV{0}
 	return ["ok", []]
 end
 
@@ -306,9 +313,10 @@ fun Std_Base_newton_get_argv:
 end
 
 fun Std_Base_newton_update_argv: @args base_name
-	set args: [$base_name]
+	set args: []
+	push $args, $base_name
 	for &idx, 0, ($argc - 1), 1:
-		args{$idx + 1}: $argv{$idx}
+		push $args, $argv{$idx}
 	end
 	argv: $args
 	argc: (sizeof $args)
@@ -318,6 +326,7 @@ end
 defmacro quit:
 	system.exit $M_ARGV{0}
 end
+
 ; ------------------------------------------
 ; Global String Functions/Macros
 ; ------------------------------------------
@@ -355,20 +364,8 @@ defmacro splitToMap:
 	return $capture{1}
 end
 
-; defmacro splitToMap:
-; 	set delim: $M_ARGV{1}
-; 	return @capture string.splitToMap $M_ARGV{0}, $delim
-; end
-
-; ------------------------------------------
-; Global Booleans (Functions to avoid having to use '$true', '$false') [OPTIONAL]
-; ------------------------------------------
 fun true: return 1 end
 fun false: return 0 end
-
-; ------------------------------------------
-; Utility Functions
-; ------------------------------------------
 fun pass: end
 
 fun iota:

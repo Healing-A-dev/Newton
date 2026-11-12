@@ -1,0 +1,273 @@
+using std::os
+
+set VERSION*: "0.7.0 [BETA]"
+
+set STATES*: (
+    State: "",
+    Input: "",
+    Output: "",
+    Backend: "",
+    Fallback: "",
+    Intermidiates: "",
+    LinkerFiles: [],
+    RunArguments: [],
+    ObjectOutput: "",
+    Verbose: "",
+    TargetOS: "",
+    isScript: false,
+    noStdlib: false
+)
+
+fun printHelpMessage:
+    @println "Newton Programming Language"
+    @println "-------------------------------"
+    @println "Usage: newton <command> [<args>] [<flags>]\n"
+    @println "commands:"
+    @println "   init <name>    > Initialize a new Newton project skeleton."
+    @println "   build <file>   > Compile a Newton file or project. [default]"
+    @println "   run <file>     > Compile and run immediately."
+    @println "   lsp            > Launch the Newton Language Server Protocol (LSP) daemon."
+    @println "   help           > Display this message."
+    @println "   version        > Display the installed build version.\n"
+    @println "options:"
+    @println "   -b | --backend  > Specify the compiler backend (native, c, webasm)."
+    @println "   -f | --fallback > Specify a backend to fallback to in case of compilation errors."
+    @println "   -o | --output   > Specify the output binary name."
+    @println "   -p | --platform > Specify the target platform (win64, linux, darwin)."
+    @println "   -r | --run      > Compile and immediately run the specified file."
+    @println "   -v | --verbose  > Enable verbose compiler output.\n"
+    @println "advanced flags:"
+    @println "   --keep-intermidiates > Keep all generated intermediate files."
+    @println "   --debug              > Generate debug information instead of compiling."
+    @println "   --link-C             > Link with C."
+    @println "   --script             > Treat the given file as a newton script file (.nts)."
+    @println "   --noStdlib           > Prevents the standard library from being automatically imported."
+    @println "   -L                   > Specify a library search directory (-L <dir>)."
+    @println "   -l                   > Specify a file or library to link with (-l <file.o>)."
+    @println "   -O                   > Compile to an object file."
+    @println "   -GVM                 > Stop compilation at GravityVM bytecode generation."
+end
+
+fun initProject: @args name
+    set dir: $name
+    if $dir == "":
+        dir: "newton_project"
+    end
+
+    newDirectory $dir
+    newDirectory $dir << "/src"
+    newDirectory $dir << "/lib"
+    newDirectory $dir << "/bin"
+
+    set main_code: "fun main:\n    @println \"Hello, World!\"\nend\n"
+    writefile $dir << "/src/main.nt", $main_code
+
+    set gitignore: "packages/\nbin/\n*.o\n"
+    writefile $dir << "/.gitignore", $gitignore
+
+    set npf_config: "[Project]\nname = \"" << $dir << "\"\nversion = \"0.1.0\"\nentrypoint = \"src/main.nt\"\n\n[Packages]\n"
+    writefile $dir << "/.Newtonproj.toml", $npf_config
+    @println "\x1b[1;32mCreated\x1b[0m project directory `{}`", $dir
+    @quit 0
+end
+
+fun stripQuotes: @args str
+    set clean: string.replace $str, "\"", ""
+    clean: string.replace $clean, "'", ""
+    return $clean
+end
+
+
+fun addLinkCFlags: @args linkedC
+    if not $linkedC:
+        push $cli.STATES{"LinkerFiles"}, "-l:-m"
+        push $cli.STATES{"LinkerFiles"}, "-l:elf_x86_64"
+        push $cli.STATES{"LinkerFiles"}, "-l:-L/usr/lib64"
+        push $cli.STATES{"LinkerFiles"}, "-l:-L/usr/lib/x86_64-linux-gnu"
+        push $cli.STATES{"LinkerFiles"}, "-l:-L/usr/lib"
+        push $cli.STATES{"LinkerFiles"}, "-l:-lc"
+        push $cli.STATES{"LinkerFiles"}, "-l:-lm"
+        push $cli.STATES{"LinkerFiles"}, "-l:--dynamic-linker"
+        push $cli.STATES{"LinkerFiles"}, "-l:/lib64/ld-linux-x86_64.so.2"
+    end
+    return true
+end
+
+
+fun parseArgs: @args ARGS
+    set [counter, linkedC, working_directory]: [0, false, (os.getenv "PWD")]
+
+    cli.STATES{"TargetOS"}: os.host
+    cli.STATES{"State"}: "build"
+
+    if (sizeof $ARGS) == 1:
+        cli.printHelpMessage
+        @quit 1
+    end
+
+    set cmd: $ARGS{1}
+
+    if $cmd == "init":
+        set pName: "newton_project"
+        if (sizeof $ARGS) > 1:
+            pName: $ARGS{2}
+        end
+        cli.initProject $pName
+    elseif $cmd == "run":
+        cli.STATES{"State"}: "run"
+        if (sizeof $ARGS) > 2 and not (string.startsWith $ARGS{1}, "-"):
+            cli.STATES{"Input"}: $ARGS{2}
+        end
+        counter: 3
+    elseif $cmd == "build":
+        cli.STATES{"State"}: "build"
+        if (sizeof $ARGS) > 2 and not (string.startsWith $ARGS{1}, "-"):
+            cli.STATES{"Input"}: $ARGS{2}
+        end
+        counter: 3
+    elseif $cmd == "version":
+        @println "newton {}", $cli.VERSION
+        @quit
+    elseif $cmd == "help":
+        cli.printHelpMessage
+        @quit 0
+    elseif $cmd == "lsp":
+        cli.STATES{"State"}: "lsp"
+        counter: 2
+    elseif $cmd == "self-update":
+        @println "WIP"
+        @quit 0
+    else:
+        if not (string.startsWith $cmd, "-"):
+            cli.STATES{"Input"}: $cmd
+            counter: 2
+        end
+    end
+
+    while $counter < (sizeof $ARGS):
+        set arg: $ARGS{$counter}
+
+        if $arg == "-o" or $arg == "--output":
+            cli.STATES{"Output"}: $ARGS{$counter + 1}
+            counter: $counter + 1
+        elseif $arg == "-b" or $arg == "--backend":
+            cli.STATES{"Backend"}: "-b:" << $ARGS{$counter + 1}
+            counter: $counter + 1
+        elseif $arg == "-f" or $arg == "--fallback":
+            cli.STATES{"Fallback"}: "-f:" << $ARGS{$counter + 1}
+            counter: $counter + 1
+        elseif $arg == "-p" or $arg == "--platform":
+            cli.STATES{"TargetOS"}: "-p:" << $ARGS{$counter + 1}
+            counter: $counter + 1
+        elseif $arg == "-L":
+            if $counter + 1 < (sizeof $ARGS):
+                push $cli.STATES{"LinkerFiles"}, "-l:-L" << $ARGS{$counter + 1}
+                counter: $counter + 1
+            end
+        elseif $arg == "-l":
+            if $counter + 1 < (sizeof $ARGS):
+                set target: $ARGS{$counter + 1}
+                counter: $counter + 1
+                if (string.endsWith $target, ".o") or (string.endsWith $target, ".a") or (string.has $target, ".so"):
+                    push $cli.STATES{"LinkerFiles"}, "-l:" << $target
+                else:
+                    linkedC: cli.addLinkCFlags $linkedC
+                    push $cli.STATES{"LinkerFiles"}, "-l:-l" << $target
+                end
+            end
+        elseif $arg == "--keep-intermidiates":
+            cli.STATES{"Intermidiates"}: "-intermidiates:true"
+        elseif $arg == "--debug":
+            cli.STATES{"State"}: "disassemble"
+        elseif $arg == "-v" or $arg =="--verbose":
+            cli.STATES{"Verbose"}: "-verbose:true"
+        elseif $arg == "--noStdlib":
+            cli.STATES{"noStdlib"}: true
+        elseif $arg == "--script":
+            cli.STATES{"isScript"}: true
+        elseif $arg == "-O":
+            cli.STATES{"State"}: "generate-object"
+        elseif $arg == "-r" or $arg == "--run":
+            cli.STATES{"State"}: "run"
+        elseif $arg == "-GVM":
+            cli.STATES{"Backend"}: "-b:gravity"
+        elseif $arg == "--link-C":
+            linkedC: cli.addLinkCFlags $linkedC
+        else:
+            if $cli.STATES{"Input"} == "" and not (string.startsWith $arg, "-"):
+                cli.STATES{"Input"}: $arg
+            else:
+
+                push $cli.STATES{"RunArguments"}, "-a:" << $arg
+            end
+        end
+        counter: $counter + 1
+    end
+
+    ; Auto-detect .Newtonproj.toml and auto-link packages
+    if (fileExists $working_directory << "/.Newtonproj.toml") and $cli.STATES{"Input"} == "":
+        set [current_section, line_num]: ["", 0]
+        set newtonproj: string.split (readfile $working_directory << "/.Newtonproj.toml"), "\n"
+
+        while $line_num < (sizeof $newtonproj):
+            set line: string.stripWhitespace $newtonproj{$line_num}
+
+            if $line == "" or (string.startsWith $line, "#"):
+                line_num: $line_num + 1
+                line: string.stripWhitespace $newtonproj{$line_num}
+            end
+
+            if (string.startsWith $line, "[") and (string.endsWith $line, "]"):
+                current_section: string.lower (string.sub $line, 1, (sizeof $line) - 2)
+                line_num: $line_num + 1
+                line: string.stripWhitespace $newtonproj{$line_num}
+            end
+
+            if $current_section == "build":
+                @println "\x1b[96m#build-step\x1b[0m " << $line
+                set exit_code: os.execute $line
+                if $exit_code != 0:
+                    @println "\x1b[91m#build-error\x1b[0m Command failed: " << $line
+                    @quit 1
+                end
+            elseif $current_section == "linkerfiles":
+                push $cli.STATES, "-l:" << $line
+            end
+
+            set parts: string.split $line, "="
+            if (sizeof $parts) == 2:
+                set key: string.stripWhitespace $parts{0}
+                set val: string.stripWhitespace $parts{1}
+
+                if $current_section == "project":
+                    if $key == "entrypoint" and $cli.STATES{"Input"} == "":
+                        cli.STATES{"Input"}: cli.stripQuotes $val
+                    elseif $key == "name" and $cli.STATES{"Output"} == "":
+                        cli.STATES{"Output"}: "bin/" << (cli.stripQuotes $val)
+                    end
+                elseif $current_section == "flags":
+                    set flag_val: string.lower $val
+                    if $flag_val == "true":
+                        match $key:
+                            "noStdlib" -> cli.STATES{"noStdlib"}: true
+                            "script"   -> cli.STATES{"isScript"}: true
+                            "verbose"  -> cli.STATES{"Verbose"}: "-verbose:true"
+                            "link-C"   -> linkedC: cli.addLinkCFlags $linkedC
+                        end
+                    end
+                elseif $current_section == "packages":
+                    set pkg_obj: "packages/" << $key << ".o"
+                    if (fileExists $pkg_obj):
+                        push $cli.STATES, "-l:" << $pkg_obj
+                    end
+                end
+            end
+            line_num: $line_num + 1
+        end
+    end
+
+    if $cli.STATES{"Input"} == "" and $cli.STATES{"State"} != "help" and $cli.STATES{"State"} != "lsp":
+        @println "\x1b[1;31mError:\x1b[0m No input file provided and no .Newtonproj.toml was found."
+        @quit 1
+    end
+end

@@ -103,14 +103,14 @@ proc fetchPackages(manifest: NpfManifest) =
 
       let pkgManifestPath = localPath / "package.nnpm"
       var outName = name
-      var entryFile = name & ".nt" 
+      var entryFile = name & ".nt"
 
       if fileExists(pkgManifestPath):
         for line in lines(pkgManifestPath):
           if "Out ->" in line:
             let parts = line.split("Out ->")
             if parts.len == 2: outName = parts[1].strip().replace("\"", "")
-          elif "Entry ->" in line: 
+          elif "Entry ->" in line:
             let parts = line.split("Entry ->")
             if parts.len == 2: entryFile = parts[1].strip().replace("\"", "")
 
@@ -153,7 +153,7 @@ proc fetchPackages(manifest: NpfManifest) =
 proc main() =
   let args = commandLineParams()
   if args.len == 0:
-    echo "🪐 \e[96mNNPM - Newtonian Package Manager\e[0m"
+    echo "\e[96mNNPM - Non-Newtonian Package Manager\e[0m"
     echo "Usage:"
     echo "  nnpm add <name> <url> [--local]   (Adds to .Newtonproj.toml)"
     echo "  nnpm install                      (Downloads & Amalgamates packages)"

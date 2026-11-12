@@ -727,6 +727,7 @@ newton_to_int:
 newton_sizeof:
     push %rbp; mov %rsp, %rbp
     test %rdi, %rdi; jz .Lns_zero
+    test $1, %rdi; jnz .Lns_zero
     mov -8(%rdi), %rcx
     cmp $1, %rcx; je .Lns_type1
     cmp $2, %rcx; je .Lns_type3

@@ -191,7 +191,7 @@ fun registerAstFunctions: @args c, stmtsList
 		set k: $s{"kind"}
 		if $k == $enum.nkFunction:
 			set fReg: $c{"functionRegistry"}
-			fReg{$s{"fnName"}}: sizeof $s{"fnArgs"}
+			fReg{$s{"fnName"}}: (sizeof $s{"fnArgs"}) + 1
 		elseif $k == $enum.nkBlock:
 			codegen.registerAstFunctions $c, $s{"blockStmts"}
 		end
@@ -225,7 +225,20 @@ fun gen: @args c, node
 		codegen.emit $c, "0H", "$00", "3843", "00"
 		codegen.emit $c, "0H", "@00", "3843", "00"
 		codegen.emit $c, "0H", "%00", "3843", "00"
-		codegen.emit $c, "0J", "[ENTRY]", "00", "00"
+
+		set hasMain: 0
+		set nStmtsCheck: sizeof $node{"stmts"}
+		for &ci, 0, $nStmtsCheck, 1:
+			set cs: $node{"stmts"}{$ci}
+			if ($cs{"kind"} == $enum.nkFunction) and ($cs{"fnName"} == "main"):
+				hasMain: 1
+				break
+			end
+		end
+
+		if $hasMain == 1:
+			codegen.emit $c, "0J", "[ENTRY]", "00", "00"
+		end
 
 		set mainLabel: codegen.newLabel $c
 		codegen.emit $c, "0B", ("[" << $mainLabel << "]"), "00", "00"
@@ -285,7 +298,11 @@ fun gen: @args c, node
 
 		codegen.emit $c, "0A", "%rbp", "%rsp", "00"
 		codegen.emit $c, "40", "%rdi", "0", "00"
-		codegen.emit $c, "0L", "0", "00", "00"
+		if $hasMain == 1:
+			codegen.emit $c, "0L", "0", "00", "00"
+		else:
+			codegen.emit $c, "1C", "00", "00", "00"
+		end
 		codegen.emit $c, "0I", "$00", "00", "00"
 		codegen.emit $c, "0I", "@00", "00", "00"
 		codegen.emit $c, "0I", "%00", "00", "00"
@@ -406,11 +423,11 @@ fun gen: @args c, node
 
 	; nkFloatLit
 	elseif $kind == $enum.nkFloatLit:
-		set lbl: "FLT_" << (string (codegen.newLabel $c))
-		codegen.emit $c, "1E", $lbl, ("[" << $node{"strVal"} << "]"), "00"
+		set lbl: "FLT_" << (codegen.newLabel $c)
+		codegen.emit $c, "3B", $lbl, $node{"strVal"}, "00"
 		set dest: codegen.allocTemp $c
-		codegen.emit $c, "40", "%rdi", ("$" << $lbl), "00"
-		codegen.emit $c, "1B", "runtime_box_float_str", "0", "00"
+		codegen.emit $c, "3A", $lbl, "xmm0", "00"
+		codegen.emit $c, "1B", "newton_box_float", "0", "00"
 		codegen.emit $c, "40", $dest, "%rax", "00"
 		return [@ok, $dest]
 
@@ -954,6 +971,23 @@ fun gen: @args c, node
 			return [@ok, ""]
 		end
 
+		if (string.startsWith $callName, "#"):
+			set c_symbol: string.sub $callName, 1, (sizeof $callName) - 1
+			set regs: ["%rdi", "%rsi", "%rdx", "%rcx", "%r8", "%r9"]
+			set argLocs: []
+			for &i, 0, (math.min (sizeof $args), 6), 1:
+				push $argLocs, (codegen.gen $c, $args{$i})
+			end
+			for &i, 0, (sizeof $argLocs), 1:
+				codegen.emit $c, "40", $regs{i}, $argLocs{$i}, "00"
+			end
+			set dest: $codegen.allocTemp $c
+			if not (string.has $dest, "(%rbp)"): codegen.emit $c, "03", $dest, "0", "00" end
+			codegen.emit $c, "1I", $c_symbol, "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
 		if $callName == "__sys_collection_delete":
 			set colLoc: codegen.gen $c, $args{0}
 			set keyLoc: codegen.gen $c, $args{1}
@@ -1343,6 +1377,54 @@ fun gen: @args c, node
 			codegen.emit $c, "1I", $cSymbol, "0", "00"
 			codegen.emit $c, "40", $dest, "%rax", "00"
 			return [@ok, $dest]
+		end
+
+		if $callName == "prints":
+			set nArgs: sizeof $args
+			for &i, 0, $nArgs, 1:
+				set loc: codegen.gen $c, $args{$i}
+				codegen.emit $c, "1F", $loc, "00", "00"
+			end
+			return [@ok, ""]
+		end
+
+		if $callName == "__alloc_array":
+			set sizeLoc: codegen.gen $c, $args{0}
+			set tmp: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rax", $sizeLoc, "00"
+			codegen.emit $c, "1B", "alloc_flat_array", "0", "00"
+			codegen.emit $c, "40", $tmp, "%rax", "00"
+			return [@ok, $tmp]
+		end
+
+		if $callName == "__file_size":
+			set fdLoc: codegen.gen $c, $args{0}
+			set dest: codegen.allocTemp $c
+			codegen.emit $c, "40", "%rdi", $fdLoc, "00"
+			codegen.emit $c, "1B", "sys_file_size", "0", "00"
+			codegen.emit $c, "40", $dest, "%rax", "00"
+			return [@ok, $dest]
+		end
+
+		if $callName == "sys_err":
+			set msgLoc: codegen.gen $c, $args{0}
+			set lineNum: $node{"line"}
+			set taggedLine: ($lineNum * 2) + 1
+			set lineLoc: "$" << (string $taggedLine)
+			set fileNode: ast.astNode $enum.nkLiteral
+			fileNode{"strVal"}: $errors.currentCompilingFile
+			fileNode{"isString"}: 1
+			set codeNode: ast.astNode $enum.nkLiteral
+			codeNode{"strVal"}: ""
+			codeNode{"isString"}: 1
+			set fileLoc: codegen.gen $c, $fileNode
+			set codeLoc: codegen.gen $c, $codeNode
+			codegen.emit $c, "40", "%rdi", $fileLoc, "00"
+			codegen.emit $c, "40", "%rsi", $lineLoc, "00"
+			codegen.emit $c, "40", "%rdx", $codeLoc, "00"
+			codegen.emit $c, "40", "%rcx", $msgLoc, "00"
+			codegen.emit $c, "1B", "sys_log_err", "0", "00"
+			return [@ok, ""]
 		end
 
 		; General User Function Call

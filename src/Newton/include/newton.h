@@ -39,7 +39,8 @@ extern "C" {
  * Array pointer 'arr' points to offset 8 of the allocated block.
  * - offset -8: .quad 3 (type tag for array)
  * - offset  0: .quad length
- * - offset  8 + (i * 8): element i (tagged ints or pointers)
+ * - offset  8: .quad capacity
+ * - offset 16: pointer to data buffer (tag 7, elements 0..length-1)
  */
 
 static inline int64_t newton_array_len(const void *arr) {
@@ -51,7 +52,9 @@ static inline int64_t newton_array_get_raw(const void *arr, int64_t index) {
     if (!arr) return 0;
     const int64_t *p = (const int64_t*)arr;
     if (index < 0 || index >= p[0]) return 0;
-    return p[1 + index];
+    const int64_t *data = (const int64_t*)p[2];
+    if (!data) return 0;
+    return data[index];
 }
 
 static inline int64_t newton_array_get_int(const void *arr, int64_t index) {

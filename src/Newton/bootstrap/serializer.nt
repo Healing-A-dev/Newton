@@ -6,8 +6,7 @@ fun parseOpcode: @args op
 	set val: 0
 	set len: sizeof $op
 	for &i, 0, $len, 1:
-		set c: substring $op, $i, 1
-		set a: string.ascii $c
+		set a: $op{$i}
 		val: $val * 36
 		if ($a >= 48) and ($a <= 57):
 			val: $val + ($a - 48)
@@ -64,13 +63,12 @@ fun serializeToBinary: @args filename, bytecode
 			set argLen: sizeof $arg
 			push $bytes, $argLen
 			for &cIdx, 0, $argLen, 1:
-				set ch: substring $arg, $cIdx, 1
-				push $bytes, (string.ascii $ch)
+				push $bytes, $arg{$cIdx}
 			end
 		end
 
 		; Flush chunks to avoid array heap limits
-		if (sizeof $bytes) >= 100:
+		if (sizeof $bytes) >= 8192:
 			__file_write_bin $fd, $bytes
 			bytes: []
 		end
